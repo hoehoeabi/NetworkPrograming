@@ -5,7 +5,7 @@
 
 #define PORT 6000
 #define BUF_SIZE 256
-
+//깃허브 연결 테스트
 int main() {
     int sock;
     struct sockaddr_in serv_addr;
