@@ -59,7 +59,6 @@ int main() {
     SDL_Window *window = SDL_CreateWindow("🎨 그림을 맞춰봐!!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
 
     client_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -76,6 +75,7 @@ int main() {
     int running = 1;
     int drawing = 0;
     char buffer[BUFFER_SIZE];
+    int last_x = -1, last_y = -1;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -102,14 +102,26 @@ int main() {
                 }
 
                 drawing = 1;
+                last_x = -1;
+                last_y = -1;
             } else if (event.type == SDL_MOUSEBUTTONUP) {
                 drawing = 0;
+                last_x = -1;
+                last_y = -1;
             } else if (event.type == SDL_MOUSEMOTION && drawing) {
                 int x, y;
                 SDL_GetMouseState(&x, &y);
                 SDL_SetRenderDrawColor(renderer, colors[current_color_index].r, colors[current_color_index].g, colors[current_color_index].b, 255);
-                SDL_Rect rect = {x - pen_size / 2, y - pen_size / 2, pen_size, pen_size};
-                SDL_RenderFillRect(renderer, &rect);
+
+                if (last_x != -1 && last_y != -1) {
+                    SDL_RenderDrawLine(renderer, last_x, last_y, x, y);
+                } else {
+                    SDL_Rect rect = {x - pen_size / 2, y - pen_size / 2, pen_size, pen_size};
+                    SDL_RenderFillRect(renderer, &rect);
+                }
+                last_x = x;
+                last_y = y;
+
                 SDL_RenderPresent(renderer);
 
                 snprintf(buffer, BUFFER_SIZE, "%d,%d,%d,%d", x, y, current_color_index, pen_size);
@@ -125,8 +137,8 @@ int main() {
         draw_button(renderer, 50, 50, 30, (SDL_Color){128, 128, 128, 255});
         draw_button(renderer, 90, 50, 30, (SDL_Color){192, 192, 192, 255});
 
-        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
         SDL_Rect clear_button = {10, 90, 80, 30};
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
         SDL_RenderFillRect(renderer, &clear_button);
         SDL_RenderPresent(renderer);
     }
