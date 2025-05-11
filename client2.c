@@ -1,3 +1,5 @@
+// gcc client2.c -o client2 -lSDL2 -pthread
+
 #include "SDL2/SDL.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,17 +40,26 @@ int check_button_click(int x, int y, int button_x, int button_y, int size) {
 
 void *recv_data(void *arg) {
     char buffer[BUFFER_SIZE];
+    int last_x = -1, last_y = -1; // 이전 좌표를 기억하여 선을 그림
     while (1) {
         memset(buffer, 0, BUFFER_SIZE);
         int bytes_received = recv(client_fd, buffer, BUFFER_SIZE, 0);
         if (bytes_received <= 0) break;
 
         int x, y, color_index, size;
-        sscanf(buffer, "%d,%d,%d,%d", &x, &y, &color_index, &size);
-        SDL_SetRenderDrawColor(renderer, colors[color_index].r, colors[color_index].g, colors[color_index].b, 255);
-        SDL_Rect rect = {x - size / 2, y - size / 2, size, size};
-        SDL_RenderFillRect(renderer, &rect);
-        SDL_RenderPresent(renderer);
+        if (sscanf(buffer, "%d,%d,%d,%d", &x, &y, &color_index, &size) == 4) {
+            SDL_SetRenderDrawColor(renderer, colors[color_index].r, colors[color_index].g, colors[color_index].b, 255);
+            // 받은 좌표를 이용하여 짧은 선을 그림 (이전 좌표가 있다면)
+            if (last_x != -1 && last_y != -1) {
+                SDL_RenderDrawLine(renderer, last_x, last_y, x, y);
+            } else {
+                SDL_Rect rect = {x - size / 2, y - size / 2, size, size};
+                SDL_RenderFillRect(renderer, &rect);
+            }
+            last_x = x;
+            last_y = y;
+            SDL_RenderPresent(renderer);
+        }
     }
     return NULL;
 }
@@ -57,8 +68,9 @@ int main() {
     SDL_Init(SDL_INIT_VIDEO);
 
     SDL_Window *window = SDL_CreateWindow("🎨 그림을 맞춰봐!!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC); // VSync 활성화
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
 
     client_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -75,7 +87,7 @@ int main() {
     int running = 1;
     int drawing = 0;
     char buffer[BUFFER_SIZE];
-    int last_x = -1, last_y = -1;
+    int last_send_x = -1, last_send_y = -1; // 마지막으로 서버에 보낸 좌표
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -99,33 +111,50 @@ int main() {
                     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                     SDL_RenderClear(renderer);
                     SDL_RenderPresent(renderer);
+                    // 전체 지우기 신호 서버에 전송 (선택 사항)
+                    char clear_buffer[BUFFER_SIZE];
+                    snprintf(clear_buffer, BUFFER_SIZE, "CLEAR");
+                    send(client_fd, clear_buffer, strlen(clear_buffer), 0);
                 }
 
                 drawing = 1;
-                last_x = -1;
-                last_y = -1;
+                last_send_x = -1;
+                last_send_y = -1;
             } else if (event.type == SDL_MOUSEBUTTONUP) {
                 drawing = 0;
-                last_x = -1;
-                last_y = -1;
+                last_send_x = -1;
+                last_send_y = -1;
             } else if (event.type == SDL_MOUSEMOTION && drawing) {
                 int x, y;
                 SDL_GetMouseState(&x, &y);
                 SDL_SetRenderDrawColor(renderer, colors[current_color_index].r, colors[current_color_index].g, colors[current_color_index].b, 255);
 
-                if (last_x != -1 && last_y != -1) {
-                    SDL_RenderDrawLine(renderer, last_x, last_y, x, y);
+                // 부드러운 선 그리기 (자신에게 먼저 그림)
+                static int prev_x = -1, prev_y = -1;
+                if (prev_x != -1 && prev_y != -1) {
+                    for (int i = 0; i < pen_size; ++i) {
+                        SDL_RenderDrawLine(renderer, prev_x + i, prev_y, x + i, y);
+                        SDL_RenderDrawLine(renderer, prev_x, prev_y + i, x, y + i);
+                    }
                 } else {
                     SDL_Rect rect = {x - pen_size / 2, y - pen_size / 2, pen_size, pen_size};
                     SDL_RenderFillRect(renderer, &rect);
                 }
-                last_x = x;
-                last_y = y;
-
+                prev_x = x;
+                prev_y = y;
                 SDL_RenderPresent(renderer);
 
+                // 현재 좌표를 서버에 실시간으로 전송
                 snprintf(buffer, BUFFER_SIZE, "%d,%d,%d,%d", x, y, current_color_index, pen_size);
                 send(client_fd, buffer, strlen(buffer), 0);
+            } else if (event.type == SDL_MOUSEBUTTONUP) {
+                static int prev_x = -1, prev_y = -1;
+                prev_x = -1;
+                prev_y = -1;
+            } else if (event.type == SDL_MOUSEMOTION && !drawing) {
+                static int prev_x = -1, prev_y = -1;
+                prev_x = -1;
+                prev_y = -1;
             }
         }
 
