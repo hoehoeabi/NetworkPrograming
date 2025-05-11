@@ -1,4 +1,4 @@
-// gcc client2.c -o client2 -lSDL2 -pthread
+// gcc client2.c -o client2 `sdl2-config --cflags --libs` -pthread
 
 #include "SDL2/SDL.h"
 #include <stdio.h>
