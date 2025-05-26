@@ -62,6 +62,17 @@ int local_mouse_is_drawing = 0;
 int local_mouse_last_x = -1;
 int local_mouse_last_y = -1;
 
+// 수신한 그림 데이터를 저장하는 구조체 (client2.c 참고)
+typedef struct {
+    int type; // 0: POINT, 1: LINE, 2: CLEAR
+    int x1, y1, x2, y2, color_index, size;
+} ReceivedDrawData;
+
+ReceivedDrawData *received_draw_commands = NULL;
+int received_draw_commands_count = 0;
+int received_draw_commands_capacity = 20; // 초기 용량
+pthread_mutex_t received_draw_commands_lock; // 이 뮤텍스 추가
+
 // 스레드
 pthread_t server_message_receiver_tid;
 
@@ -170,10 +181,42 @@ void* server_message_receiver_thread_func(void* arg) {
                 printf("\r[클라이언트:수신스레드] 오류: 해당 닉네임은 이미 사용 중입니다.\n> ");
             } else if (strncmp(server_response_line, "ERR_NICK_REQUIRED:", 18) == 0) {
                  printf("\r[클라이언트:수신스레드] 서버 요구: 닉네임 설정이 필요합니다.\n> ");
-            } else if (strncmp(server_response_line, "DRAW_", 5) == 0) {
-                if (app_current_state == STATE_IN_ROOM && sdl_render_loop_running) {
-                    apply_drawing_data_from_server(server_response_line);
+            } else if (strncmp(server_response_line, "DRAW_POINT:", 11) == 0) {
+                ReceivedDrawData data = {0}; // POINT 타입
+                data.type = 0;
+                if (sscanf(server_response_line + 11, "%d,%d,%d,%d", &data.x1, &data.y1, &data.color_index, &data.size) == 4) {
+                    pthread_mutex_lock(&received_draw_commands_lock);
+                    if (received_draw_commands_count >= received_draw_commands_capacity) {
+                        received_draw_commands_capacity *= 2;
+                        received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+                        // realloc 오류 처리 추가 필요
+                    }
+                    received_draw_commands[received_draw_commands_count++] = data;
+                    pthread_mutex_unlock(&received_draw_commands_lock);
+                    // printf("[수신스레드] DRAW_POINT 저장\n");
                 }
+            } else if (strncmp(server_response_line, "DRAW_LINE:", 10) == 0) {
+                ReceivedDrawData data = {0}; // LINE 타입
+                data.type = 1;
+                if (sscanf(server_response_line + 10, "%d,%d,%d,%d,%d,%d", &data.x1, &data.y1, &data.x2, &data.y2, &data.color_index, &data.size) == 6) {
+                    pthread_mutex_lock(&received_draw_commands_lock);
+                    if (received_draw_commands_count >= received_draw_commands_capacity) {
+                        // ... realloc ...
+                    }
+                    received_draw_commands[received_draw_commands_count++] = data;
+                    pthread_mutex_unlock(&received_draw_commands_lock);
+                    // printf("[수신스레드] DRAW_LINE 저장\n");
+                }
+            } else if (strcmp(server_response_line, "DRAW_CLEAR") == 0) {
+                ReceivedDrawData data = {0}; // CLEAR 타입
+                data.type = 2;
+                pthread_mutex_lock(&received_draw_commands_lock);
+                if (received_draw_commands_count >= received_draw_commands_capacity) {
+                    // ... realloc ...
+                }
+                received_draw_commands[received_draw_commands_count++] = data;
+                pthread_mutex_unlock(&received_draw_commands_lock);
+                // printf("[수신스레드] DRAW_CLEAR 저장\n");
             }
             current_line_ptr = newline_char_found + 1;
         }
@@ -371,13 +414,55 @@ void run_sdl_main_event_loop() {
         }
         if (!sdl_should_be_active) break; // SDL_QUIT 등으로 외부에서 종료 요청 시 즉시 PollEvent 다음 루프 종료
 
-        SDL_SetRenderDrawColor(app_sdl_renderer, 50, 50, 50, 255); SDL_RenderClear(app_sdl_renderer);
-        SDL_Rect canvas_display_rect = {0, UI_AREA_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT - UI_AREA_HEIGHT};
-        SDL_RenderCopy(app_sdl_renderer, app_drawing_canvas_texture, NULL, &canvas_display_rect);
-        render_sdl_ui_elements(); SDL_RenderPresent(app_sdl_renderer);
-        Uint32 frame_elapsed_time = SDL_GetTicks() - frame_start_tick;
-        if (frame_elapsed_time < 16) { SDL_Delay(16 - frame_elapsed_time); }
-    }
+        pthread_mutex_lock(&received_draw_commands_lock);
+           if (received_draw_commands_count > 0) {
+               SDL_SetRenderTarget(app_sdl_renderer, app_drawing_canvas_texture);
+               for (int i = 0; i < received_draw_commands_count; i++) {
+                   ReceivedDrawData cmd = received_draw_commands[i];
+                   if (cmd.type == 0) { // POINT
+                       SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[cmd.color_index].r, sdl_colors[cmd.color_index].g, sdl_colors[cmd.color_index].b, 255);
+                       SDL_Rect pr = {cmd.x1 - cmd.size/2, (cmd.y1 - UI_AREA_HEIGHT) - cmd.size/2, cmd.size, cmd.size};
+                       SDL_RenderFillRect(app_sdl_renderer, &pr);
+                   } else if (cmd.type == 1) { // LINE
+                       SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[cmd.color_index].r, sdl_colors[cmd.color_index].g, sdl_colors[cmd.color_index].b, 255);
+                       for (int dx = -cmd.size/2; dx <= cmd.size/2; ++dx) {
+                           for (int dy = -cmd.size/2; dy <= cmd.size/2; ++dy) {
+                               if(dx*dx + dy*dy <= (cmd.size/2)*(cmd.size/2) +1 ){
+                                   SDL_RenderDrawLine(app_sdl_renderer, cmd.x1 + dx, (cmd.y1 - UI_AREA_HEIGHT) + dy, cmd.x2 + dx, (cmd.y2 - UI_AREA_HEIGHT) + dy);
+                               }
+                           }
+                       }
+                   } else if (cmd.type == 2) { // CLEAR
+                       SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255);
+                       SDL_RenderClear(app_sdl_renderer);
+                   }
+               }
+               SDL_SetRenderTarget(app_sdl_renderer, NULL); // 기본 렌더 타겟으로 복원
+               received_draw_commands_count = 0; // 버퍼 비우기
+           }
+           pthread_mutex_unlock(&received_draw_commands_lock);
+           // --- 여기까지 추가/수정 ---
+
+           // 기존 렌더링 로직 (UI 요소들 그리기 및 최종 화면 표시)
+           SDL_SetRenderDrawColor(app_sdl_renderer, 50, 50, 50, 255); // 배경색
+           SDL_RenderClear(app_sdl_renderer); // 윈도우 전체 클리어
+
+           SDL_Rect canvas_display_rect = {0, UI_AREA_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT - UI_AREA_HEIGHT};
+           SDL_RenderCopy(app_sdl_renderer, app_drawing_canvas_texture, NULL, &canvas_display_rect); // 캔버스 텍스처 복사
+
+           render_sdl_ui_elements(); // UI 버튼 등 그리기
+           SDL_RenderPresent(app_sdl_renderer); // 최종 화면 업데이트
+
+           // 프레임 딜레이
+           Uint32 frame_elapsed_time = SDL_GetTicks() - frame_start_tick;
+           if (frame_elapsed_time < 16) { SDL_Delay(16 - frame_elapsed_time); }
+
+           // 루프 종료 조건 체크 (SDL_QUIT 처리 후 sdl_should_be_active가 0이 되므로)
+           if (!(sdl_render_loop_running && sdl_should_be_active && app_current_state == STATE_IN_ROOM && client_is_nick_set)){
+               break;
+           }
+       }
+    
     shutdown_sdl_environment();
     printf("[클라이언트:SDL루프] === 그래픽 루프 종료됨 ===\n");
 }
@@ -402,6 +487,14 @@ int main(int argc, char* argv[]) {
         perror("수신 스레드 생성 실패"); close(client_socket_fd); exit(1);
     }
 
+    pthread_mutex_init(&received_draw_commands_lock, NULL); // 뮤텍스 초기화
+    
+    // 동적 배열 초기화
+        received_draw_commands = malloc(received_draw_commands_capacity * sizeof(ReceivedDrawData));
+        if (received_draw_commands == NULL) {
+            perror("[클라이언트:메인] received_draw_commands 메모리 할당 실패");
+            exit(1);
+        }
     char terminal_input_line[BUFFER_SIZE];
     printf("> "); fflush(stdout);
 
