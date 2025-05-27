@@ -17,14 +17,14 @@
 #define ROOM_NAME_SIZE 32
 #define INPUT_BUFFER_SIZE (BUFFER_SIZE * 2)
 
-typedef struct ClientInfo ClientInfo; // Forward declaration
-typedef struct Room Room;       // Forward declaration
+typedef struct ClientInfo ClientInfo;
+typedef struct Room Room;
 
 struct ClientInfo {
     int sock;
     char nickname[NICK_SIZE];
-    int roomID; // -1: 로비, 0 이상: 방 ID
-    int has_set_initial_nick; // 라운지에서 초기 닉네임 설정 여부
+    int roomID;
+    int has_set_initial_nick;
     char input_buffer[INPUT_BUFFER_SIZE];
     int input_len;
 };
@@ -34,13 +34,12 @@ struct Room {
     char name[ROOM_NAME_SIZE];
     ClientInfo* users[MAX_USERS_PER_ROOM];
     int user_count;
-    // int current_drawer_sock; // 캐치마인드용 추후 추가
 };
 
-ClientInfo* clients[MAX_CLIENTS]; // 인덱스 = 소켓 fd
+ClientInfo* clients[MAX_CLIENTS];
 Room rooms[MAX_ROOMS];
 int room_count = 0;
-int next_room_id = 1; // 1부터 시작
+int next_room_id = 1;
 
 // --- 함수 프로토타입 ---
 void send_to_client(int sock, const char* msg);
@@ -52,14 +51,13 @@ void add_client_to_room(Room* room, ClientInfo* client);
 void remove_client_from_room(ClientInfo* client, Room* room);
 void handle_client_disconnection(int client_sock);
 void process_client_message(ClientInfo* client, const char* message_line);
-// 방 관련 명령어 처리 함수
 void handle_nick_command(ClientInfo* client, const char* nick_arg);
 void handle_create_room_command(ClientInfo* client, const char* room_name_arg);
 void handle_join_room_command(ClientInfo* client, const char* room_identifier_arg);
 void handle_list_rooms_command(ClientInfo* client);
 void handle_exit_room_command(ClientInfo* client);
 void broadcast_message_to_room(ClientInfo* sender, const char* original_message_payload);
-void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_without_newline);
+void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_with_newline);
 
 
 void send_to_client(int sock, const char* msg) {
@@ -90,10 +88,10 @@ Room* get_room_by_name(const char* name) {
 int is_nickname_taken(const char* nick) {
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i] != NULL && clients[i]->has_set_initial_nick && strcmp(clients[i]->nickname, nick) == 0) {
-            return 1; // 중복됨
+            return 1;
         }
     }
-    return 0; // 중복 아님
+    return 0;
 }
 
 void add_client_to_room(Room* room, ClientInfo* client) {
@@ -132,13 +130,12 @@ void remove_client_from_room(ClientInfo* client, Room* room) {
         room->user_count--;
         char leave_msg[BUFFER_SIZE];
         snprintf(leave_msg, BUFFER_SIZE, "ROOM_EVENT:[%s]님이 퇴장했습니다.\n", client->nickname);
-        for (int i = 0; i < room->user_count; i++) { // 남은 사람들에게 알림
+        for (int i = 0; i < room->user_count; i++) {
             send_to_client(room->users[i]->sock, leave_msg);
         }
         printf("[서버] %s님이 방 '%s'(ID:%d)에서 퇴장.\n", client->nickname, room->name, room->id);
     }
-    client->roomID = -1; // 로비로 상태 변경
-    // 방이 비었을 때 자동 삭제 로직 (선택 사항)
+    client->roomID = -1;
     if (room->user_count == 0 && room_count > 0) {
         printf("[서버] 방 '%s'(ID:%d)이(가) 비어서 삭제됩니다.\n", room->name, room->id);
         int room_idx = -1;
@@ -149,6 +146,7 @@ void remove_client_from_room(ClientInfo* client, Room* room) {
                 rooms[i] = rooms[i+1];
             }
             room_count--;
+            // rooms[room_count]의 내용을 초기화할 필요는 없음. room_count가 줄었으므로 접근 안됨.
         }
     }
 }
@@ -192,7 +190,7 @@ void handle_nick_command(ClientInfo* client, const char* nick_arg) {
     snprintf(smsg, BUFFER_SIZE, "SMSG:닉네임이 '%s'(으)로 설정되었습니다.\n", client->nickname);
     send_to_client(client->sock, smsg);
 
-    if (client->roomID != -1 && was_initial_nick_set) { // 방 안에서 닉변
+    if (client->roomID != -1 && was_initial_nick_set) {
         char nick_change_broadcast[BUFFER_SIZE];
         snprintf(nick_change_broadcast, BUFFER_SIZE, "ROOM_EVENT:['%s'님이 '%s'(으)로 닉네임을 변경했습니다.]\n", old_nick, client->nickname);
         Room* room = get_room_by_id(client->roomID);
@@ -206,11 +204,11 @@ void handle_nick_command(ClientInfo* client, const char* nick_arg) {
 
 void handle_create_room_command(ClientInfo* client, const char* room_name_arg) {
     if (!client->has_set_initial_nick) {
-        send_to_client(client->sock, "ERR_NICK_REQUIRED:방 생성\n");
+        send_to_client(client->sock, "ERR_NICK_REQUIRED:방 생성 먼저 /nick <닉네임> 설정 필요\n");
         return;
     }
     if (client->roomID != -1) {
-        send_to_client(client->sock, "SMSG:이미 다른 방에 참여중입니다. 먼저 퇴장해주세요. (/exit_room)\n");
+        send_to_client(client->sock, "SMSG:이미 다른 방에 참여중입니다. 먼저 퇴장해주세요. (/exit)\n");
         return;
     }
     if (room_count >= MAX_ROOMS) {
@@ -221,31 +219,28 @@ void handle_create_room_command(ClientInfo* client, const char* room_name_arg) {
         send_to_client(client->sock, "SMSG:방 이름이 유효하지 않습니다.\n");
         return;
     }
-    // 방 이름 중복 검사 (선택 사항)
     if (get_room_by_name(room_name_arg) != NULL){
         send_to_client(client->sock, "SMSG:이미 존재하는 방 이름입니다.\n");
         return;
     }
 
-    Room* new_room = &rooms[room_count]; // 새 방 슬롯
+    Room* new_room = &rooms[room_count];
     new_room->id = next_room_id++;
     strncpy(new_room->name, room_name_arg, ROOM_NAME_SIZE - 1);
     new_room->name[ROOM_NAME_SIZE - 1] = '\0';
     new_room->user_count = 0;
-    // new_room->current_drawer_sock = -1; // 게임 관련 초기화
-    // new_room->game_state = WAITING;
-    room_count++; // 실제 방 개수 증가
+    room_count++;
 
     add_client_to_room(new_room, client);
 }
 
 void handle_join_room_command(ClientInfo* client, const char* room_identifier_arg) {
     if (!client->has_set_initial_nick) {
-        send_to_client(client->sock, "ERR_NICK_REQUIRED:방 입장\n");
+        send_to_client(client->sock, "ERR_NICK_REQUIRED:방 입장 먼저 /nick <닉네임> 설정 필요\n");
         return;
     }
     if (client->roomID != -1) {
-        send_to_client(client->sock, "SMSG:이미 다른 방에 참여중입니다. 먼저 퇴장해주세요. (/exit_room)\n");
+        send_to_client(client->sock, "SMSG:이미 다른 방에 참여중입니다. 먼저 퇴장해주세요. (/exit)\n");
         return;
     }
     if (strlen(room_identifier_arg) == 0) {
@@ -255,10 +250,10 @@ void handle_join_room_command(ClientInfo* client, const char* room_identifier_ar
 
     Room* room_to_join = NULL;
     int room_id_attempt = atoi(room_identifier_arg);
-    if (room_id_attempt > 0) { // 숫자로 변환 시도 (ID로 간주)
+    if (room_id_attempt > 0) {
         room_to_join = get_room_by_id(room_id_attempt);
     }
-    if (!room_to_join) { // ID로 못 찾았거나, 원래 문자열이었으면 이름으로 검색
+    if (!room_to_join) {
         room_to_join = get_room_by_name(room_identifier_arg);
     }
 
@@ -278,7 +273,7 @@ void handle_list_rooms_command(ClientInfo* client) {
         strcat(list_buffer, "현재 생성된 방이 없습니다.\n");
     } else {
         for (int i = 0; i < room_count; i++) {
-            if (rooms[i].id > 0 ) { // 유효한 방만 (id가 0이하가 아닌)
+            if (rooms[i].id > 0 ) {
                  char room_detail[128];
                 if (!first_room) {
                     if (current_len + 1 < BUFFER_SIZE -1) {
@@ -296,8 +291,9 @@ void handle_list_rooms_command(ClientInfo* client) {
                 }
             }
         }
-        if (current_len < BUFFER_SIZE -1) strcat(list_buffer, "\n");
-        else list_buffer[BUFFER_SIZE-1] = '\0';
+        if (list_buffer[current_len-1] == ';') list_buffer[current_len-1] = '\n'; // 마지막 세미콜론 변경
+        else if(first_room && room_count > 0) {} // 방은 있으나 유효한 방이 없어 아무것도 안찍힌 경우
+        else strcat(list_buffer, "\n");
     }
     send_to_client(client->sock, list_buffer);
 }
@@ -309,7 +305,7 @@ void handle_exit_room_command(ClientInfo* client) {
     }
     Room* room = get_room_by_id(client->roomID);
     if (room) {
-        remove_client_from_room(client, room); // 내부에서 roomID = -1로 변경
+        remove_client_from_room(client, room);
     }
     send_to_client(client->sock, "SMSG:방에서 퇴장했습니다. 로비로 돌아갑니다.\n");
 }
@@ -323,60 +319,57 @@ void broadcast_message_to_room(ClientInfo* sender, const char* original_message_
     if (!room) return;
 
     char msg_to_broadcast[BUFFER_SIZE];
+    // *** 수정된 부분: 채팅 메시지 형식 변경 ***
     snprintf(msg_to_broadcast, BUFFER_SIZE, "MSG:[%s] %s\n", sender->nickname, original_message_payload);
 
     for (int i = 0; i < room->user_count; i++) {
-        if (room->users[i]->sock != sender->sock) { // 자신 제외
+        // *** 수정된 부분: 자기 자신에게는 보내지 않음 (선택적) ***
+        if (room->users[i]->sock != sender->sock) {
             send_to_client(room->users[i]->sock, msg_to_broadcast);
         }
     }
 }
 
-void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_without_newline) {
-    if (sender->roomID == -1 || !sender->has_set_initial_nick) {
+void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_with_newline) {
+     if (sender->roomID == -1 || !sender->has_set_initial_nick) {
         return;
     }
     Room* room = get_room_by_id(sender->roomID);
     if (!room) return;
 
-    char message_with_newline[BUFFER_SIZE];
-    snprintf(message_with_newline, BUFFER_SIZE, "%s\n", draw_message_line_without_newline); // 개행 문자 추가
-
+    // draw_message_line_with_newline은 이미 "DRAW_...\n" 형식을 가지고 있다고 가정.
     for (int i = 0; i < room->user_count; i++) {
         if (room->users[i]->sock != sender->sock) {
-            send_to_client(room->users[i]->sock, message_with_newline);
+            send_to_client(room->users[i]->sock, draw_message_line_with_newline);
         }
     }
 }
 
 
-void process_client_message(ClientInfo* client, const char* message_line) {
-    printf("[서버 수신] (sock %d, nick %s, room %d): %s\n", client->sock, client->nickname, client->roomID, message_line);
+void process_client_message(ClientInfo* client, const char* message_line_no_newline) { // 개행 없는 메시지 라인
+    printf("[서버 수신] (sock %d, nick %s, room %d): %s\n", client->sock, client->nickname, client->roomID, message_line_no_newline);
 
-    if (strncmp(message_line, "NICK:", 5) == 0) {
-        handle_nick_command(client, message_line + 5);
-    } else if (strncmp(message_line, "CREATE_ROOM:", 12) == 0) {
-        handle_create_room_command(client, message_line + 12);
-    } else if (strncmp(message_line, "JOIN_ROOM:", 10) == 0) {
-        handle_join_room_command(client, message_line + 10);
-    } else if (strcmp(message_line, "LIST_ROOMS") == 0) {
+    if (strncmp(message_line_no_newline, "NICK:", 5) == 0) {
+        handle_nick_command(client, message_line_no_newline + 5);
+    } else if (strncmp(message_line_no_newline, "CREATE_ROOM:", 12) == 0) {
+        handle_create_room_command(client, message_line_no_newline + 12);
+    } else if (strncmp(message_line_no_newline, "JOIN_ROOM:", 10) == 0) {
+        handle_join_room_command(client, message_line_no_newline + 10);
+    } else if (strcmp(message_line_no_newline, "LIST_ROOMS") == 0) {
         handle_list_rooms_command(client);
-    } else if (strcmp(message_line, "EXIT_ROOM") == 0) {
+    } else if (strcmp(message_line_no_newline, "EXIT_ROOM") == 0) {
         handle_exit_room_command(client);
-    } else if (strncmp(message_line, "MSG:", 4) == 0) {
-        broadcast_message_to_room(client, message_line + 4);
-    } else if (strncmp(message_line, "DRAW_POINT:", 11) == 0 ||
-               strncmp(message_line, "DRAW_LINE:", 10) == 0 ||
-               strcmp(message_line, "DRAW_CLEAR") == 0) {
-        broadcast_draw_data_to_room(client, message_line); // message_line은 이미 \n 포함
-    } else if (strcmp(message_line, "QUIT") == 0) {
-        // 클라이언트가 /quit 입력. 연결 종료 처리.
-        // handle_client_disconnection에서 FD_CLR은 해주므로 여기서는 호출만.
-        // select 루프에서 recv <= 0 일 때와 동일하게 처리되도록 유도.
-        // send_to_client(client->sock, "SMSG:연결을 종료합니다.\n"); // 선택적
-        // 이 메시지 후 클라이언트는 아마 close 할 것임.
-        // 서버에서는 다음 recv에서 0을 받아 연결 종료 처리.
-        printf("[서버] 클라이언트 %s (sock %d)가 QUIT 요청.\n", client->nickname, client->sock);
+    } else if (strncmp(message_line_no_newline, "MSG:", 4) == 0) {
+        broadcast_message_to_room(client, message_line_no_newline + 4);
+    } else if (strncmp(message_line_no_newline, "DRAW_POINT:", 11) == 0 ||
+               strncmp(message_line_no_newline, "DRAW_LINE:", 10) == 0 ||
+               strcmp(message_line_no_newline, "DRAW_CLEAR") == 0) {
+        char draw_message_with_newline[BUFFER_SIZE];
+        snprintf(draw_message_with_newline, BUFFER_SIZE, "%s\n", message_line_no_newline); // 개행 추가해서 전달
+        broadcast_draw_data_to_room(client, draw_message_with_newline);
+    } else if (strcmp(message_line_no_newline, "QUIT") == 0) {
+        printf("[서버] 클라이언트 %s (sock %d)가 QUIT 요청. 연결 종료 처리 유도.\n", client->nickname, client->sock);
+        // 실제 연결 종료는 recv <= 0 일 때 handle_client_disconnection에서 처리됨
     }
     else {
         send_to_client(client->sock, "SMSG:알 수 없는 형식의 메시지 또는 명령어입니다.\n");
@@ -392,7 +385,7 @@ int main() {
     int max_fd;
 
     for (int i = 0; i < MAX_CLIENTS; i++) clients[i] = NULL;
-    for (int i = 0; i < MAX_ROOMS; i++) rooms[i].id = 0; // id 0은 사용 안 함
+    for (int i = 0; i < MAX_ROOMS; i++) { rooms[i].id = 0; rooms[i].user_count = 0; }
 
     listen_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_sock < 0) { perror("socket"); exit(EXIT_FAILURE); }
@@ -408,7 +401,7 @@ int main() {
     if (bind(listen_sock, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
         perror("bind"); close(listen_sock); exit(EXIT_FAILURE);
     }
-    if (listen(listen_sock, MAX_CLIENTS) < 0) {
+    if (listen(listen_sock, MAX_CLIENTS) < 0) { // SOMAXCONN 대신 MAX_CLIENTS
         perror("listen"); close(listen_sock); exit(EXIT_FAILURE);
     }
 
@@ -427,7 +420,7 @@ int main() {
 
         for (int sock_fd = 0; sock_fd <= max_fd; sock_fd++) {
             if (FD_ISSET(sock_fd, &read_fd_set)) {
-                if (sock_fd == listen_sock) { // New connection
+                if (sock_fd == listen_sock) {
                     client_address_len = sizeof(client_address);
                     new_sock_fd = accept(listen_sock, (struct sockaddr*)&client_address, &client_address_len);
                     if (new_sock_fd < 0) { perror("accept"); continue; }
@@ -454,7 +447,7 @@ int main() {
                     printf("[서버] 새 클라이언트 연결: %s (sock %d)\n", inet_ntoa(client_address.sin_addr), new_sock_fd);
                     send_to_client(new_sock_fd, "SMSG:서버에 연결되었습니다. 라운지입니다. 먼저 /nick <원하는닉네임> 으로 닉네임을 설정해주세요.\nSMSG:닉네임 설정 후 /roomlist, /create <방이름>, /join <방ID/이름> 명령어를 사용할 수 있습니다.\n");
 
-                } else { // Data from existing client
+                } else {
                     ClientInfo* client = get_client_by_sock(sock_fd);
                     if (!client) continue;
 
@@ -483,7 +476,7 @@ int main() {
                             char single_line_msg[INPUT_BUFFER_SIZE];
                             strcpy(single_line_msg, line_start);
                             
-                            process_client_message(client, single_line_msg);
+                            process_client_message(client, single_line_msg); // 이제 개행 없는 메시지 전달
                             
                             line_start = newline_ptr + 1;
                         }
@@ -502,8 +495,7 @@ int main() {
             }
         }
     }
-    // 실제로는 이 루프를 빠져나오지 않음. 시그널 처리 등으로 종료 시 자원 해제 필요.
-    for(int i=0; i<=max_fd; ++i) if(FD_ISSET(i, &master_fd_set) && clients[i]) handle_client_disconnection(i);
+    for(int i=0; i<=max_fd; ++i) if(FD_ISSET(i, &master_fd_set) && clients[i] && i != listen_sock) handle_client_disconnection(i);
     close(listen_sock);
     printf("[서버] 서버 종료.\n");
     return 0;
