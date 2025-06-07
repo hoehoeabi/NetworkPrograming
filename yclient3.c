@@ -1,4 +1,4 @@
-// gcc yclient2.c -o yclient2 -pthread $(sdl2-config --cflags --libs) -lSDL2_ttf
+// gcc yclient3.c -o yclient3 -pthread $(sdl2-config --cflags --libs) -lSDL2_ttf
 #include "SDL2/SDL.h"
 #include "sdl2_ttf/2.24.0/include/SDL2/SDL_ttf.h" 
 #include <stdio.h>
@@ -34,7 +34,6 @@ SDL_Color sdl_colors[] = {
 };
 int current_sdl_color_index = 0; // 현재 선택된 색상 인덱스
 int current_pen_size = 5;        // 현재 펜 크기
-
 volatile int text_input_focused = 0; // 텍스트 입력창 포커스 여부
 
 // 클라이언트 상태
@@ -51,12 +50,15 @@ int client_current_room_id = -1;                // 현재 입장한 방 ID
 char client_current_room_name[ROOM_NAME_SIZE] = ""; // 현재 입장한 방 이름
 char answer_input_buffer[BUFFER_SIZE] = "";     // 정답 입력 버퍼
 int answer_input_len = 0;                       // 정답 입력 버퍼 길이
-char ime_composition[BUFFER_SIZE] = "";         // IME 조합 문자열 상태 (한글 조합 중일 때 사용됨)
-
+char ime_composition[BUFFER_SIZE] = "";
 int ime_cursor = 0;
+Uint32 round_start_tick = 0; // 라운드 종료 시각 (ms 단위)
+int round_duration_seconds = 60; // 제한 시간 
+
 // 서버 메시지 수신 버퍼
 char server_message_buffer[INPUT_BUFFER_SIZE];
 int server_message_len = 0;
+int is_current_user_drawer = 0;
 
 // SDL 관련 전역 변수
 SDL_Window* app_sdl_window = NULL;
@@ -94,8 +96,16 @@ void shutdown_sdl_environment();
 void render_sdl_ui_elements();
 void handle_sdl_mouse_click_on_ui(int x, int y);
 void client_side_clear_canvas_and_notify_server();
-
-// ✅ 정답 결과 표시용 변수 (추가됨)
+void draw_text(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color) {
+    extern TTF_Font* app_ui_font; // 전역 폰트
+    SDL_Surface* surface = TTF_RenderUTF8_Blended(app_ui_font, text, color);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_Rect dst = { x, y, surface->w, surface->h };
+    SDL_RenderCopy(renderer, texture, NULL, &dst);
+    SDL_FreeSurface(surface);
+    SDL_DestroyTexture(texture);
+}
+// 정답 결과 표시용 변수 (추가됨)
 char sdl_answer_result_text[BUFFER_SIZE] = "";
 Uint32 answer_result_display_tick = 0; // 메시지 표시 시작 시간 (SDL_GetTicks() 값)
 
@@ -115,6 +125,10 @@ void send_formatted_message_to_server(const char* type_or_full_cmd, const char* 
 // --- 서버 메시지 수신 스레드 ---
 void* server_message_receiver_thread_func(void* arg) {
     char temp_chunk_buffer[BUFFER_SIZE];
+    char sdl_answer_result_text[128] = "";
+    char server_response_line[INPUT_BUFFER_SIZE];
+    Uint32 answer_result_display_tick = 0;
+
     int bytes_read;
     printf("[클라이언트:수신스레드] 시작됨.\n");
 
@@ -124,8 +138,30 @@ void* server_message_receiver_thread_func(void* arg) {
             if (bytes_read == 0) printf("\r[클라이언트:수신스레드] 서버 연결 정상 종료됨.\n> ");
             else perror("\r[클라이언트:수신스레드] 서버 메시지 수신 오류");
             main_program_should_run = 0;
-            if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL 루프 종료 유도
-            break;
+            Uint32 now = SDL_GetTicks();
+	if (now - answer_result_display_tick < 2000 && strlen(sdl_answer_result_text) > 0) {
+    		SDL_Color color;
+		if (strstr(sdl_answer_result_text, "정답입니다!")) {
+    			color = (SDL_Color){0, 255, 0};  // 초록색
+		} else {
+    			color = (SDL_Color){255, 0, 0};  // 빨간색
+		}
+
+	draw_text(app_sdl_renderer, sdl_answer_result_text, 120, 30, color);
+	}
+	if (SDL_GetTicks() - answer_result_display_tick > 2000) {
+        	sdl_answer_result_text[0] = '\0';
+	}
+	else if (strncmp(server_response_line, "TIMER:", 6) == 0) {
+        int time_left = atoi(server_response_line + 6);  
+        round_start_tick = SDL_GetTicks();
+        round_duration_seconds = time_left;
+        printf("[클라이언트:TIMER] %d초로 설정됨\n", time_left);
+	}
+
+
+        if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL 루프 종료 유도
+        break;
         }
         temp_chunk_buffer[bytes_read] = '\0'; // 널 종료
 
@@ -144,8 +180,23 @@ void* server_message_receiver_thread_func(void* arg) {
         char* newline_char_found;
         while ((newline_char_found = strchr(current_line_ptr, '\n')) != NULL) {
             *newline_char_found = '\0'; // 개행 문자를 널 문자로 바꿔 라인 끝 표시
-            char server_response_line[INPUT_BUFFER_SIZE];
             strcpy(server_response_line, current_line_ptr); // 현재 라인 복사
+           if (strstr(server_response_line, "정답입니다!") != NULL) {
+    		round_start_tick = SDL_GetTicks();
+    		round_duration_seconds = 60;  // 혹은 서버에서 전달받은 시간 사용
+	   }
+           if (strncmp(server_response_line, "SMSG:제시어는 '", 15) == 0) {
+    is_current_user_drawer = 1;
+}
+else if (strstr(server_response_line, "님이 출제자입니다.") != NULL) {
+    is_current_user_drawer = strstr(server_response_line, client_nickname) != NULL;
+}
+else if (strncmp(server_response_line, "TIMER:", 6) == 0) {
+    int time_left = atoi(server_response_line + 6);
+    round_start_tick = SDL_GetTicks();
+    round_duration_seconds = time_left;
+}
+
 
             // 일반 메시지 출력 (화면에 표시)
             if (strncmp(server_response_line, "MSG:", 4) == 0) {
@@ -192,7 +243,7 @@ void* server_message_receiver_thread_func(void* arg) {
                     strcpy(client_current_room_name, "");
                     if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL 루프 종료 유도
                 }
-                // ✅ 정답/오답 메시지 처리 (추가됨)
+                // 정답/오답 메시지 처리 (추가됨)
                 else if (strncmp(smsg_payload_content, "정답입니다", 12) == 0 ||
                          strncmp(smsg_payload_content, "오답입니다", 13) == 0) {
                     strncpy(sdl_answer_result_text, smsg_payload_content, sizeof(sdl_answer_result_text) - 1);
@@ -229,6 +280,22 @@ void* server_message_receiver_thread_func(void* arg) {
                     pthread_mutex_unlock(&received_draw_commands_lock);
                 }
             } else if (strcmp(server_response_line, "DRAW_CLEAR") == 0) {
+    ReceivedDrawData data = {0};
+    data.type = 2; // CLEAR 명령
+    pthread_mutex_lock(&received_draw_commands_lock);
+    if (received_draw_commands_count >= received_draw_commands_capacity) {
+        received_draw_commands_capacity *= 2;
+        received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+        if (!received_draw_commands) {
+            perror("realloc draw clear (CLEAR) failed");
+            pthread_mutex_unlock(&received_draw_commands_lock);
+            main_program_should_run = 0;
+            break;
+        }
+    }
+    received_draw_commands[received_draw_commands_count++] = data;
+    pthread_mutex_unlock(&received_draw_commands_lock);
+} else if (strcmp(server_response_line, "CLEAR") == 0) {
                 ReceivedDrawData data = {0};
                 data.type = 2; // CLEAR
                 pthread_mutex_lock(&received_draw_commands_lock);
@@ -263,7 +330,6 @@ void initialize_sdl_environment() {
         return;
     }
     printf("[클라이언트:SDL] UI 초기화 시작 (방: '%s', 닉네임: '%s')\n", client_current_room_name, client_nickname);
-    SDL_SetHint(SDL_HINT_IME_INTERNAL_EDITING, "1"); // 한글 조합 처리를 위한 SDL 힌트 설정
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) { fprintf(stderr, "SDL Init 실패: %s\n", SDL_GetError()); main_program_should_run = 0; return; }
     if (TTF_Init() == -1) { fprintf(stderr, "TTF Init 실패: %s (계속 진행)\n", TTF_GetError()); }
@@ -325,6 +391,10 @@ void shutdown_sdl_environment() {
 
 // --- SDL UI 요소 렌더링 ---
 void render_sdl_ui_elements() {
+    Uint32 now = SDL_GetTicks();
+    int seconds_passed = (now - round_start_tick) / 1000;
+    int seconds_left = round_duration_seconds - seconds_passed;
+
     if (!app_sdl_renderer) return;
 
     // UI 배경
@@ -343,7 +413,7 @@ void render_sdl_ui_elements() {
         }
     }
 
-    // 펜 크기 버튼
+    // 펜 굵기 버튼
     int pen_sizes_options[] = {3, 8, 15};
     for (int i = 0; i < 3; i++) {
         SDL_Rect btn = {10 + i * 45, 45, 40, 30};
@@ -355,10 +425,14 @@ void render_sdl_ui_elements() {
         }
     }
 
-    // 지우기 버튼
-    SDL_Rect clear_btn = {WINDOW_WIDTH - 90, 10, 80, 30};
-    SDL_SetRenderDrawColor(app_sdl_renderer, 230, 80, 80, 255);
+    // 전체 지우기 버튼
+    SDL_Rect clear_btn = {10 + 3 * 45, 45, 100, 30};
+    SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // 흰색
     SDL_RenderFillRect(app_sdl_renderer, &clear_btn);
+    SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 255); // 검정
+    SDL_RenderDrawRect(app_sdl_renderer, &clear_btn);
+    SDL_Color black = {0, 0, 0, 255};  // 검정색
+    draw_text(app_sdl_renderer, "All Clear", clear_btn.x + 10, clear_btn.y + 5, black);
 
     // 제출 버튼
     SDL_Rect submit_btn = {710, 10, 80, 30};
@@ -367,7 +441,7 @@ void render_sdl_ui_elements() {
 
     if (app_ui_font) {
         SDL_Color text_color = {0, 0, 0};
-        SDL_Surface* btn_text_surface = TTF_RenderUTF8_Blended(app_ui_font, "제출", text_color);
+        SDL_Surface* btn_text_surface = TTF_RenderUTF8_Blended(app_ui_font, "Submit", text_color);
         if (btn_text_surface) {
             SDL_Texture* btn_text_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, btn_text_surface);
             SDL_Rect btn_text_rect = {
@@ -410,22 +484,60 @@ void render_sdl_ui_elements() {
     // 정답/오답 결과 텍스트 출력
     if (strlen(sdl_answer_result_text) > 0 && SDL_GetTicks() - answer_result_display_tick < 3000) {
         SDL_Color color = {0, 0, 0, 255};
-        if (strstr(sdl_answer_result_text, "정답")) color = (SDL_Color){0, 160, 0, 255};
-        else if (strstr(sdl_answer_result_text, "오답")) color = (SDL_Color){200, 0, 0, 255};
+        if (strstr(sdl_answer_result_text, "O")) color = (SDL_Color){0, 160, 0, 255};
+        else if (strstr(sdl_answer_result_text, "X")) color = (SDL_Color){200, 0, 0, 255};
 
         SDL_Surface* result_surface = TTF_RenderUTF8_Blended(app_ui_font, sdl_answer_result_text, color);
         if (result_surface) {
             SDL_Texture* result_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, result_surface);
             SDL_Rect rect = {
-                (WINDOW_WIDTH - result_surface->w) / 2,
-                UI_AREA_HEIGHT + 10,
-                result_surface->w, result_surface->h
+                (WINDOW_WIDTH - result_surface->w) / 2, 5, result_surface->w, result_surface->h
             };
             SDL_RenderCopy(app_sdl_renderer, result_texture, NULL, &rect);
             SDL_FreeSurface(result_surface);
             SDL_DestroyTexture(result_texture);
         }
     }
+    //타이머 표시
+    if (round_start_tick > 0 && round_duration_seconds > 0 && app_ui_font) {
+    Uint32 now = SDL_GetTicks();
+    int seconds_passed = (now - round_start_tick) / 1000;
+    int seconds_left = round_duration_seconds - seconds_passed;
+    if (seconds_left < 0) seconds_left = 0;
+
+    char timer_text[64];
+    snprintf(timer_text, sizeof(timer_text), "TIMER : %dsec", seconds_left);
+
+    SDL_Color text_color = {30, 144, 255, 255};  // 파란색
+
+    SDL_Surface* surface = TTF_RenderUTF8_Blended(app_ui_font, timer_text, text_color);
+    if (surface) {
+        SDL_Texture* texture = SDL_CreateTextureFromSurface(app_sdl_renderer, surface);
+        if (texture) {
+            int tex_w = surface->w;
+            int tex_h = surface->h;
+
+            // 수치로 위치 설정 (중앙 상단)
+            int text_x = (WINDOW_WIDTH - tex_w) / 2;
+            int text_y = 45; // 너무 위에 가면 버튼이랑 겹치니 약간 내림
+
+            // 반투명 배경 사각형
+            SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 160); // 검정 반투명
+            SDL_SetRenderDrawBlendMode(app_sdl_renderer, SDL_BLENDMODE_BLEND);
+            SDL_Rect bg_rect = {text_x - 10, text_y - 5, tex_w + 20, tex_h + 10};
+            SDL_RenderFillRect(app_sdl_renderer, &bg_rect);
+            SDL_SetRenderDrawBlendMode(app_sdl_renderer, SDL_BLENDMODE_NONE);
+
+            // 텍스트 렌더링
+            SDL_Rect text_rect = {text_x, text_y, tex_w, tex_h};
+            SDL_RenderCopy(app_sdl_renderer, texture, NULL, &text_rect);
+
+            SDL_DestroyTexture(texture);
+        }
+        SDL_FreeSurface(surface);
+    }
+} 
+
 }
 
 
@@ -447,12 +559,17 @@ void handle_sdl_mouse_click_on_ui(int x, int y) {
         }
     }
     // 지우개/클리어 버튼 클릭 처리
-    if (x >= WINDOW_WIDTH - 90 && x <= WINDOW_WIDTH - 10 && y >= 10 && y <= 10 + 30) {
-        client_side_clear_canvas_and_notify_server();
+    if (x >= 10 + 3 * 45 && x <= 10 + 3 * 45 + 100 && y >= 45 && y <= 45 + 30) {
+    if (!is_current_user_drawer) {
+        printf("[출제자 아님] 전체 지우기 버튼은 출제자만 사용할 수 있습니다.\n");
         return;
     }
+    client_side_clear_canvas_and_notify_server();
+    return;
+}
 
-    // ✅ 정답 입력창 클릭 처리 (추가됨)
+
+    // 정답 입력창 클릭 처리 (추가됨)
     SDL_Rect answer_box = {400, 10, 300, 30}; // 입력창 위치 정의
 
     if (x >= answer_box.x && x <= answer_box.x + answer_box.w &&
@@ -466,15 +583,14 @@ void handle_sdl_mouse_click_on_ui(int x, int y) {
         // printf("[디버깅] 입력창 포커스 OFF\n");
     }
     SDL_Rect submit_btn = {710, 10, 80, 30};
-if (x >= submit_btn.x && x <= submit_btn.x + submit_btn.w &&
-    y >= submit_btn.y && y <= submit_btn.y + submit_btn.h) {
-    if (answer_input_len > 0) {
-        send_formatted_message_to_server("MSG", answer_input_buffer);
-        answer_input_buffer[0] = '\0';
-        answer_input_len = 0;
-    }
+    if (x >= 710 && x <= 710 + 80 && y >= 10 && y <= 10 + 30) {
+    	if (answer_input_len > 0) {
+        	send_formatted_message_to_server("MSG", answer_input_buffer);
+        	answer_input_buffer[0] = '\0';
+        	answer_input_len = 0;
+    	}
     return;
-}
+    }
 }
 
 // --- 캔버스 지우기 및 서버에 알림 ---
@@ -561,7 +677,7 @@ int main(int argc, char* argv[]) {
                         // sdl_should_be_active = 0; // 서버 응답을 기다려 상태 변경하므로 주석 처리
                         break; // 이벤트 루프 종료
                     }
-                    
+              
                     //  텍스트 입력 처리 (추가됨)
                     if (sdl_event_handler.type == SDL_TEXTINPUT && text_input_focused) {
                         int len = strlen(sdl_event_handler.text.text);
@@ -573,51 +689,49 @@ int main(int argc, char* argv[]) {
                     } else if (sdl_event_handler.type == SDL_TEXTEDITING && text_input_focused) {
     strncpy(ime_composition, sdl_event_handler.edit.text, sizeof(ime_composition) - 1);
     ime_composition[sizeof(ime_composition) - 1] = '\0';
-    ime_cursor = sdl_event_handler.edit.start;  // 필요 시 사용
 		    } else if (sdl_event_handler.type == SDL_KEYDOWN) {
-                        if (sdl_event_handler.key.keysym.sym == SDLK_RETURN && text_input_focused) { // 엔터 키, 입력창 포커스 시
-                            if (answer_input_len > 0) {
-                                send_formatted_message_to_server("MSG", answer_input_buffer); // 서버로 정답 메시지 전송
-                                answer_input_buffer[0] = '\0'; answer_input_len = 0; // 입력 버퍼 비우기
-                                printf("[디버깅] 정답 메시지 전송됨: %s\n", answer_input_buffer);
-                            }
-                        } else if (sdl_event_handler.key.keysym.sym == SDLK_BACKSPACE && text_input_focused) { // 백스페이스 키, 입력창 포커스 시
-                            if (answer_input_len > 0) {
-                                answer_input_buffer[--answer_input_len] = '\0'; // 마지막 글자 삭제
-                            }
-                        }
+    if (sdl_event_handler.key.keysym.sym == SDLK_RETURN && text_input_focused) {
+        if (answer_input_len > 0) {
+            if (!is_current_user_drawer) {
+                send_formatted_message_to_server("MSG", answer_input_buffer); // 서버로 정답 메시지 전송
+                printf("[디버깅] 정답 메시지 전송됨: %s\n", answer_input_buffer);
+            } else {
+                printf("[출제자 차단] 출제자는 정답을 입력할 수 없습니다: %s\n", answer_input_buffer);
+            }
+            answer_input_buffer[0] = '\0';
+            answer_input_len = 0;
+        }
+    } else if (sdl_event_handler.key.keysym.sym == SDLK_BACKSPACE && text_input_focused) {
+        if (answer_input_len > 0) {
+            answer_input_buffer[--answer_input_len] = '\0';
+        }
+    }
+}
+if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN) {
+    int x = sdl_event_handler.button.x;
+    int y = sdl_event_handler.button.y;
 
-                    }
+    if (!is_current_user_drawer) {
+        // 참여자는 입력창 클릭만 가능
+        if (x >= 400 && x <= 700 && y >= 10 && y <= 40) {
+            text_input_focused = 1;
+            SDL_StartTextInput();
+        } else {
+            text_input_focused = 0;
+            SDL_StopTextInput();
+        }
 
-                    // 마우스 버튼 다운 이벤트 (클릭)
-                    if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN && sdl_event_handler.button.button == SDL_BUTTON_LEFT) {
-                        int m_x = sdl_event_handler.button.x;
-                        int m_y = sdl_event_handler.button.y;
-                        if (m_y < UI_AREA_HEIGHT) { // UI 영역 클릭
-                            handle_sdl_mouse_click_on_ui(m_x, m_y);
-                        } else { // 그림판 영역 클릭 (그리기 시작)
-                            local_mouse_is_drawing = 1;
-                            local_mouse_last_x = m_x;
-                            local_mouse_last_y = m_y;
-                            
-                            // 점 그리기 명령 서버로 전송
-                            char point_payload[BUFFER_SIZE];
-                            snprintf(point_payload, BUFFER_SIZE, "%d,%d,%d,%d", m_x, m_y, current_sdl_color_index, current_pen_size);
-                            send_formatted_message_to_server("DRAW_POINT", point_payload);
-                            
-                            // 로컬 드로잉 명령 버퍼에도 추가하여 즉시 반영
-                            ReceivedDrawData data = {0}; data.type = 0; data.x1 = m_x; data.y1 = m_y;
-                            data.color_index = current_sdl_color_index; data.size = current_pen_size;
-                            pthread_mutex_lock(&received_draw_commands_lock);
-                            if (received_draw_commands_count >= received_draw_commands_capacity) {
-                                received_draw_commands_capacity *= 2;
-                                received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-                                if (!received_draw_commands) { perror("realloc draw point cmd failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break;}
-                            }
-                            if(received_draw_commands) received_draw_commands[received_draw_commands_count++] = data;
-                            pthread_mutex_unlock(&received_draw_commands_lock);
-                        }
-                    }
+        // 참여자는 그림 그리기 불가 → return 없음, 그냥 아무 처리도 안함
+    } else {
+        // 출제자는 입력창 비활성화
+        text_input_focused = 0;
+        SDL_StopTextInput();
+
+        // 여기에 그림 그리기 로직 작성
+        // drawing = 1;
+        // draw_start_x = x; draw_start_y = y; 등
+    }
+}
                     // 마우스 모션 이벤트 (드래그 중)
                     else if (sdl_event_handler.type == SDL_MOUSEMOTION && local_mouse_is_drawing) {
                         int m_x = sdl_event_handler.motion.x;
@@ -648,6 +762,47 @@ int main(int argc, char* argv[]) {
                         local_mouse_is_drawing = 0;
                         local_mouse_last_x = -1;
                         local_mouse_last_y = -1;
+                    }
+                // 마우스 버튼 다운 이벤트 (클릭)
+                    if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN && sdl_event_handler.button.button == SDL_BUTTON_LEFT) {
+                        int m_x = sdl_event_handler.button.x;
+                        int m_y = sdl_event_handler.button.y;
+                        if (m_y < UI_AREA_HEIGHT) { // UI 영역 클릭
+                            handle_sdl_mouse_click_on_ui(m_x, m_y);
+                        } else {
+    if (is_current_user_drawer) {
+        // 그림판 클릭 (출제자만 가능)
+        local_mouse_is_drawing = 1;
+        local_mouse_last_x = m_x;
+        local_mouse_last_y = m_y;
+
+        // 점 그리기 명령 서버로 전송
+        char point_payload[BUFFER_SIZE];
+        snprintf(point_payload, BUFFER_SIZE, "%d,%d,%d,%d", m_x, m_y, current_sdl_color_index, current_pen_size);
+        send_formatted_message_to_server("DRAW_POINT", point_payload);
+
+        // 로컬 드로잉 명령 버퍼에도 추가하여 즉시 반영
+        ReceivedDrawData data = {0}; data.type = 0; data.x1 = m_x; data.y1 = m_y;
+        data.color_index = current_sdl_color_index; data.size = current_pen_size;
+        pthread_mutex_lock(&received_draw_commands_lock);
+        if (received_draw_commands_count >= received_draw_commands_capacity) {
+            received_draw_commands_capacity *= 2;
+            received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+            if (!received_draw_commands) {
+                perror("realloc draw point cmd failed");
+                pthread_mutex_unlock(&received_draw_commands_lock);
+                main_program_should_run = 0;
+                break;
+            }
+        }
+        if (received_draw_commands)
+            received_draw_commands[received_draw_commands_count++] = data;
+        pthread_mutex_unlock(&received_draw_commands_lock);
+    } else {
+        printf("[차단] 출제자가 아니므로 그림을 그릴 수 없습니다.\n");
+    }
+}
+
                     }
                 } // end of SDL_PollEvent loop
 

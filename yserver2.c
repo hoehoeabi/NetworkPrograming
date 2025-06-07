@@ -2,11 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <errno.h>
+#include <time.h>
 
 #define SERVER_PORT 12345
 #define MAX_CLIENTS FD_SETSIZE
@@ -37,6 +39,9 @@ struct Room {
     char current_answer[64];
     int drawer_sock;
     int round_active;
+    time_t round_start_time;
+    int round_duration_seconds;
+    ClientInfo* current_drawer;
 };
 
 ClientInfo* clients[MAX_CLIENTS];
@@ -45,6 +50,8 @@ int room_count = 0;
 int next_room_id = 1;
 
 // --- 함수 프로토타입 ---
+void start_new_round(Room* room);
+void send_to_all_clients_in_room(Room* room, const char* msg);
 void send_to_client(int sock, const char* msg);
 ClientInfo* get_client_by_sock(int sock);
 Room* get_room_by_id(int id);
@@ -59,24 +66,130 @@ void handle_create_room_command(ClientInfo* client, const char* room_name_arg);
 void handle_join_room_command(ClientInfo* client, const char* room_identifier_arg);
 void handle_list_rooms_command(ClientInfo* client);
 void handle_exit_room_command(ClientInfo* client);
-void broadcast_message_to_room(ClientInfo* sender, const char* original_message_payload);
-void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_with_newline);
+void send_to_all_clients_in_room(Room* room, const char* msg) {
+    if (!room) return;
+    for (int i = 0; i < room->user_count; ++i) {
+        send_to_client(room->users[i]->sock, msg);
+    }
+}
+
+void broadcast_message_to_room(ClientInfo* sender, const char* original_message_payload) {
+    if (sender->roomID == -1 || !sender->has_set_initial_nick) {
+        send_to_client(sender->sock, "SMSG:메시지를 보내려면 방에 입장하고 닉네임을 설정해야 합니다.\n");
+        return;
+    }
+
+    Room* room = get_room_by_id(sender->roomID);
+    if (!room) return;
+
+    // 출제자가 정답을 입력한 경우 무시
+    if (room->round_active &&
+        sender == room->current_drawer &&
+        strcasecmp(original_message_payload, room->current_answer) == 0) {
+        send_to_client(sender->sock, "SMSG:출제자는 정답을 입력할 수 없습니다.\n");
+        return;
+    }
+
+    // 일반 사용자가 정답을 맞춘 경우
+    if (room->round_active &&
+        strcasecmp(original_message_payload, room->current_answer) == 0) {
+        
+        char correct_msg[BUFFER_SIZE];
+        snprintf(correct_msg, BUFFER_SIZE, "ROOM_EVENT:[%s]님이 정답을 맞혔습니다! 정답은 '%s'였습니다.\n",
+                 sender->nickname, room->current_answer);
+
+        for (int i = 0; i < room->user_count; i++) {
+            send_to_client(room->users[i]->sock, correct_msg);
+        }
+
+        send_to_client(sender->sock, "SMSG:정답입니다!\n"); // 정답 메시지
+        send_to_all_clients_in_room(room, "CLEAR\n");       // 그림판 클리어 지시
+
+        room->round_active = 0;
+        room->current_drawer = sender; // 새 출제자 설정
+        start_new_round(room);         // 다음 라운드 시작
+
+        return;
+    }
+
+    // 오답 처리
+    send_to_client(sender->sock, "SMSG:오답입니다.\n");
+
+    // 일반 채팅 메시지 전송
+    char msg_to_broadcast[BUFFER_SIZE];
+    snprintf(msg_to_broadcast, BUFFER_SIZE, "MSG:[%s] %s\n", sender->nickname, original_message_payload);
+    for (int i = 0; i < room->user_count; i++) {
+        if (room->users[i]->sock != sender->sock) {
+            send_to_client(room->users[i]->sock, msg_to_broadcast);
+        }
+    }
+}
+
+void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_with_newline) {
+    if (sender->roomID == -1 || !sender->has_set_initial_nick) {
+        return;
+    }
+
+    Room* room = get_room_by_id(sender->roomID);
+    if (!room) return;
+
+    // 출제자가 아닌 경우 그리기 권한 없음
+    if (room->drawer_sock != sender->sock) {
+        send_to_client(sender->sock, "SMSG:출제자만 그림을 그릴 수 있습니다.\n");
+        return;
+    }
+
+    // broadcast to others
+    for (int i = 0; i < room->user_count; i++) {
+        if (room->users[i]->sock != sender->sock) {
+            send_to_client(room->users[i]->sock, draw_message_line_with_newline);
+        }
+    }
+}
+
 
 const char* word_list[] = {"Dog", "Car", "Hamburger", "Cap", "Chair", "Cat", "Book", "Cow", "ant", "Spider"};
 int word_list_size = 10;
 
 void start_new_round(Room* room) {
-    if (!room || room->user_count == 0) return;
-    int drawer_index = rand() % room->user_count;
-    ClientInfo* drawer = room->users[drawer_index];
-    strncpy(room->current_answer, word_list[rand() % word_list_size], sizeof(room->current_answer) - 1);
+    if (!room || room->user_count == 0 || word_list_size == 0) return;
+    ClientInfo* drawer = NULL;
+    // 이미 출제자가 설정되어 있다면 그대로 사용
+    if (room->current_drawer != NULL) {
+        drawer = room->current_drawer;
+    } else {
+        // 무작위로 출제자 선정
+        int drawer_index = rand() % room->user_count;
+        drawer = room->users[drawer_index];
+        room->current_drawer = drawer;
+    }
+
+    // 정답 단어 무작위 선택
+    int word_index = rand() % word_list_size;
+    strncpy(room->current_answer, word_list[word_index], sizeof(room->current_answer) - 1);
+    room->current_answer[sizeof(room->current_answer) - 1] = '\0';
+
+    // 사용된 단어를 단어 목록에서 제거
+    for (int i = word_index; i < word_list_size - 1; i++) {
+        word_list[i] = word_list[i + 1];
+    }
+    word_list_size--;
+
     room->drawer_sock = drawer->sock;
     room->round_active = 1;
+    room->round_start_time = time(NULL);      
+    room->round_duration_seconds = 60;  
+    // 타이머 동기화를 위한 TIMER 메시지 전송
+    char timer_msg[64];
+    snprintf(timer_msg, sizeof(timer_msg), "TIMER:%d\n", room->round_duration_seconds);
+    send_to_all_clients_in_room(room, timer_msg);
 
+    // 출제자에게는 제시어 전달
     char msg[BUFFER_SIZE];
     snprintf(msg, BUFFER_SIZE, "SMSG:제시어는 '%s'입니다. 그려주세요.\n", room->current_answer);
     send_to_client(drawer->sock, msg);
 
+    // 나머지 사용자에게 출제자 정보 전달
     snprintf(msg, BUFFER_SIZE, "ROOM_EVENT:[%s]님이 출제자입니다. 정답을 맞혀보세요!\n", drawer->nickname);
     for (int i = 0; i < room->user_count; ++i) {
         if (room->users[i]->sock != drawer->sock) {
@@ -84,7 +197,6 @@ void start_new_round(Room* room) {
         }
     }
 }
-
 
 void send_to_client(int sock, const char* msg) {
     if (send(sock, msg, strlen(msg), 0) < 0) {
@@ -288,8 +400,16 @@ void handle_join_room_command(ClientInfo* client, const char* room_identifier_ar
         send_to_client(client->sock, "SMSG:존재하지 않는 방이거나 잘못된 입력입니다.\n");
         return;
     }
+
     add_client_to_room(room_to_join, client);
+
+    // 입장 후 자동 라운드 시작 조건 확인
+    if (room_to_join->user_count >= 2 && !room_to_join->round_active && word_list_size > 0) {
+        printf("[서버] 두 명 이상이 입장했으므로 라운드 시작\n");
+        start_new_round(room_to_join);
+    }
 }
+
 
 void handle_list_rooms_command(ClientInfo* client) {
     char list_buffer[BUFFER_SIZE] = "ROOMLIST:";
@@ -318,7 +438,7 @@ void handle_list_rooms_command(ClientInfo* client) {
                 }
             }
         }
-        if (list_buffer[current_len-1] == ';') list_buffer[current_len-1] = '\n'; // 마지막 세미콜론 변경
+        if (list_buffer[current_len-1] == ';') list_buffer[current_len-1] = '\n'; 
         else if(first_room && room_count > 0) {} // 방은 있으나 유효한 방이 없어 아무것도 안찍힌 경우
         else strcat(list_buffer, "\n");
     }
@@ -336,51 +456,6 @@ void handle_exit_room_command(ClientInfo* client) {
     }
     send_to_client(client->sock, "SMSG:방에서 퇴장했습니다. 로비로 돌아갑니다.\n");
 }
-
-void broadcast_message_to_room(ClientInfo* sender, const char* original_message_payload) {
-    if (sender->roomID == -1 || !sender->has_set_initial_nick) {
-        send_to_client(sender->sock, "SMSG:메시지를 보내려면 방에 입장하고 닉네임을 설정해야 합니다.\n");
-        return;
-    }
-    Room* room = get_room_by_id(sender->roomID);
-    if (!room) return;
-
-    if (room->round_active && strcmp(original_message_payload, room->current_answer) == 0) {
-        char correct_msg[BUFFER_SIZE];
-        snprintf(correct_msg, BUFFER_SIZE, "ROOM_EVENT:[%s]님이 정답을 맞혔습니다! 정답은 '%s'였습니다.\n", sender->nickname, room->current_answer);
-        for (int i = 0; i < room->user_count; i++) {
-            send_to_client(room->users[i]->sock, correct_msg);
-        }
-        room->round_active = 0;
-        start_new_round(room); // 다음 라운드 시작
-        return;
-    }
-
-    char msg_to_broadcast[BUFFER_SIZE];
-    snprintf(msg_to_broadcast, BUFFER_SIZE, "MSG:[%s] %s\n", sender->nickname, original_message_payload);
-
-    for (int i = 0; i < room->user_count; i++) {
-        if (room->users[i]->sock != sender->sock) {
-            send_to_client(room->users[i]->sock, msg_to_broadcast);
-        }
-    }
-}
-
-void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_with_newline) {
-     if (sender->roomID == -1 || !sender->has_set_initial_nick) {
-        return;
-    }
-    Room* room = get_room_by_id(sender->roomID);
-    if (!room) return;
-
-    // draw_message_line_with_newline은 이미 "DRAW_...\n" 형식을 가지고 있다고 가정.
-    for (int i = 0; i < room->user_count; i++) {
-        if (room->users[i]->sock != sender->sock) {
-            send_to_client(room->users[i]->sock, draw_message_line_with_newline);
-        }
-    }
-}
-
 
 void process_client_message(ClientInfo* client, const char* message_line_no_newline) { // 개행 없는 메시지 라인
     printf("[서버 수신] (sock %d, nick %s, room %d): %s\n", client->sock, client->nickname, client->roomID, message_line_no_newline);
@@ -414,6 +489,7 @@ void process_client_message(ClientInfo* client, const char* message_line_no_newl
 
 
 int main() {
+    srand(time(NULL));
     int listen_sock, new_sock_fd;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
@@ -445,7 +521,7 @@ int main() {
     FD_SET(listen_sock, &master_fd_set);
     max_fd = listen_sock;
 
-    printf("[서버] 캐치마인드 기능 통합 서버 실행 중 (포트: %d)...\n", SERVER_PORT);
+    printf("[서버] 캐치마인드 게임 서버 실행 중 (포트: %d)...\n", SERVER_PORT);
 
     while (1) {
         read_fd_set = master_fd_set;
@@ -453,7 +529,20 @@ int main() {
             if (errno == EINTR) continue;
             perror("select error"); break;
         }
-
+        for (int i = 0; i < MAX_ROOMS; ++i) {
+    		Room* room = &rooms[i];
+    		if (room->round_active && room->user_count > 0) {
+        		time_t now = time(NULL);
+        		if (now - room->round_start_time >= room->round_duration_seconds) {
+            		// 시간 초과: 새로운 라운드 시작
+            			char msg[] = "ROOM_EVENT:시간 초과! 출제자가 자동으로 변경됩니다.\n";
+            			send_to_all_clients_in_room(room, msg);
+            			room->round_active = 0; // 현재 라운드 종료
+            			room->current_drawer = NULL;
+            			start_new_round(room);  // 다음 라운드 시작
+        		}
+    		}
+	}
         for (int sock_fd = 0; sock_fd <= max_fd; sock_fd++) {
             if (FD_ISSET(sock_fd, &read_fd_set)) {
                 if (sock_fd == listen_sock) {
@@ -481,7 +570,7 @@ int main() {
                     FD_SET(new_sock_fd, &master_fd_set);
                     if (new_sock_fd > max_fd) max_fd = new_sock_fd;
                     printf("[서버] 새 클라이언트 연결: %s (sock %d)\n", inet_ntoa(client_address.sin_addr), new_sock_fd);
-                    send_to_client(new_sock_fd, "SMSG:서버에 연결되었습니다. 라운지입니다. 먼저 /nick <원하는닉네임> 으로 닉네임을 설정해주세요.\nSMSG:닉네임 설정 후 /roomlist, /create <방이름>, /join <방ID/이름> 명령어를 사용할 수 있습니다.\n");
+                    send_to_client(new_sock_fd, "SMSG:서버에 연결되었습니다. 라운지입니다. 먼저 /nick <원하는닉네임> 으로 닉네임을 설정해주세요.\nSMSG:닉네임 설정 후 /list, /create <방이름>, /join <방ID/이름> 명령어를 사용할 수 있습니다.\n");
 
                 } else {
                     ClientInfo* client = get_client_by_sock(sock_fd);
