@@ -34,6 +34,9 @@ struct Room {
     char name[ROOM_NAME_SIZE];
     ClientInfo* users[MAX_USERS_PER_ROOM];
     int user_count;
+    char current_answer[64];
+    int drawer_sock;
+    int round_active;
 };
 
 ClientInfo* clients[MAX_CLIENTS];
@@ -58,6 +61,29 @@ void handle_list_rooms_command(ClientInfo* client);
 void handle_exit_room_command(ClientInfo* client);
 void broadcast_message_to_room(ClientInfo* sender, const char* original_message_payload);
 void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_line_with_newline);
+
+const char* word_list[] = {"Dog", "Car", "Hamburger", "Cap", "Chair", "Cat", "Book", "Cow", "ant", "Spider"};
+int word_list_size = 10;
+
+void start_new_round(Room* room) {
+    if (!room || room->user_count == 0) return;
+    int drawer_index = rand() % room->user_count;
+    ClientInfo* drawer = room->users[drawer_index];
+    strncpy(room->current_answer, word_list[rand() % word_list_size], sizeof(room->current_answer) - 1);
+    room->drawer_sock = drawer->sock;
+    room->round_active = 1;
+
+    char msg[BUFFER_SIZE];
+    snprintf(msg, BUFFER_SIZE, "SMSG:제시어는 '%s'입니다. 그려주세요.\n", room->current_answer);
+    send_to_client(drawer->sock, msg);
+
+    snprintf(msg, BUFFER_SIZE, "ROOM_EVENT:[%s]님이 출제자입니다. 정답을 맞혀보세요!\n", drawer->nickname);
+    for (int i = 0; i < room->user_count; ++i) {
+        if (room->users[i]->sock != drawer->sock) {
+            send_to_client(room->users[i]->sock, msg);
+        }
+    }
+}
 
 
 void send_to_client(int sock, const char* msg) {
@@ -232,6 +258,7 @@ void handle_create_room_command(ClientInfo* client, const char* room_name_arg) {
     room_count++;
 
     add_client_to_room(new_room, client);
+    start_new_round(new_room);
 }
 
 void handle_join_room_command(ClientInfo* client, const char* room_identifier_arg) {
@@ -318,12 +345,21 @@ void broadcast_message_to_room(ClientInfo* sender, const char* original_message_
     Room* room = get_room_by_id(sender->roomID);
     if (!room) return;
 
+    if (room->round_active && strcmp(original_message_payload, room->current_answer) == 0) {
+        char correct_msg[BUFFER_SIZE];
+        snprintf(correct_msg, BUFFER_SIZE, "ROOM_EVENT:[%s]님이 정답을 맞혔습니다! 정답은 '%s'였습니다.\n", sender->nickname, room->current_answer);
+        for (int i = 0; i < room->user_count; i++) {
+            send_to_client(room->users[i]->sock, correct_msg);
+        }
+        room->round_active = 0;
+        start_new_round(room); // 다음 라운드 시작
+        return;
+    }
+
     char msg_to_broadcast[BUFFER_SIZE];
-    // *** 수정된 부분: 채팅 메시지 형식 변경 ***
     snprintf(msg_to_broadcast, BUFFER_SIZE, "MSG:[%s] %s\n", sender->nickname, original_message_payload);
 
     for (int i = 0; i < room->user_count; i++) {
-        // *** 수정된 부분: 자기 자신에게는 보내지 않음 (선택적) ***
         if (room->users[i]->sock != sender->sock) {
             send_to_client(room->users[i]->sock, msg_to_broadcast);
         }
