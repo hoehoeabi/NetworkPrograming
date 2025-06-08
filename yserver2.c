@@ -152,10 +152,10 @@ void broadcast_draw_data_to_room(ClientInfo* sender, const char* draw_message_li
 
 
 const char* global_word_list[] = { "Dog", "Car", "Hamburger", "Cap", "Chair", "Cat", "Book", "Cow", "ant", "Spider" };
-int global_word_list_size = sizeof(global_word_list) / sizeof(global_word_lsit[0]);;
+int global_word_list_size = sizeof(global_word_list) / sizeof(global_word_list[0]);
 
 void start_new_round(Room* room) {
-	if (!room || room->user_count == 0 || word_list_size == 0) return;
+	if (!room || room->user_count == 0 || global_word_list_size == 0) return;
 
 	ClientInfo* drawer = NULL;
 
@@ -179,8 +179,8 @@ void start_new_round(Room* room) {
 		drawer = room->current_drawer;
 	}
 	// 정답 단어 설정
-	int word_index = rand() % word_list_size;
-	strncpy(room->current_answer, word_list[word_index], sizeof(room->current_answer) - 1);
+	int word_index = rand() % global_word_list_size;
+	strncpy(room->current_answer, room->word_list[word_index], sizeof(room->current_answer) - 1);
 	room->current_answer[sizeof(room->current_answer) - 1] = '\0';
 
 	// 사용한 단어 제거
@@ -429,7 +429,7 @@ void handle_join_room_command(ClientInfo* client, const char* room_identifier_ar
 	add_client_to_room(room_to_join, client);
 
 	// 입장 후 자동 라운드 시작 조건 확인
-	if (room_to_join->user_count >= 2 && !room_to_join->round_active && word_list_size > 0) {
+	if (room_to_join->user_count >= 2 && !room_to_join->round_active && global_word_list_size > 0) {
 		printf("[서버] 두 명 이상이 입장했으므로 라운드 시작\n");
 		start_new_round(room_to_join);
 	}
