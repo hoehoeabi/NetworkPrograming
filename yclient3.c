@@ -11,7 +11,7 @@
 #include <pthread.h>
 #include <errno.h>
 
-// ì„œë²„ ë° ë²„í¼ ì„¤ì •
+// ¼­¹ö ¹× ¹öÆÛ ¼³Á¤
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 12345
 #define BUFFER_SIZE 1024
@@ -19,76 +19,76 @@
 #define ROOM_NAME_SIZE 32
 #define INPUT_BUFFER_SIZE (BUFFER_SIZE * 2)
 
-// SDL UI ì„¤ì •
+// SDL UI ¼³Á¤
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 #define UI_AREA_HEIGHT 80
 
-// ê·¸ë¦¬ê¸° ìƒ‰ìƒ íŒ”ë ˆíŠ¸
+// ±×¸®±â »ö»ó ÆÈ·¹Æ®
 SDL_Color sdl_colors[] = {
-    {0, 0, 0, 255},       // ê²€ì •
-    {255, 0, 0, 255},     // ë¹¨ê°•
-    {0, 255, 0, 255},     // ì´ˆë¡
-    {0, 0, 255, 255},     // íŒŒë‘
-    {255, 255, 255, 255}  // í°ìƒ‰ (ì§€ìš°ê°œ ìš©ë„)
+	{0, 0, 0, 255},       // °ËÁ¤
+	{255, 0, 0, 255},     // »¡°­
+	{0, 255, 0, 255},     // ÃÊ·Ï
+	{0, 0, 255, 255},     // ÆÄ¶û
+	{255, 255, 255, 255}  // Èò»ö (Áö¿ì°³ ¿ëµµ)
 };
-int current_sdl_color_index = 0; // í˜„ì¬ ì„ íƒëœ ìƒ‰ìƒ ì¸ë±ìŠ¤
-int current_pen_size = 5;        // í˜„ì¬ íœ í¬ê¸°
-volatile int text_input_focused = 0; // í…ìŠ¤íŠ¸ ì…ë ¥ì°½ í¬ì»¤ìŠ¤ ì—¬ë¶€
+int current_sdl_color_index = 0; // ÇöÀç ¼±ÅÃµÈ »ö»ó ÀÎµ¦½º
+int current_pen_size = 5;        // ÇöÀç Ææ Å©±â
+volatile int text_input_focused = 0; // ÅØ½ºÆ® ÀÔ·ÂÃ¢ Æ÷Ä¿½º ¿©ºÎ
 
-// í´ë¼ì´ì–¸íŠ¸ ìƒíƒœ
+// Å¬¶óÀÌ¾ğÆ® »óÅÂ
 typedef enum {
-    STATE_LOBBY,    // ë¡œë¹„ ìƒíƒœ
-    STATE_IN_ROOM   // ë°© ì•ˆì— ìˆëŠ” ìƒíƒœ
+	STATE_LOBBY,    // ·Îºñ »óÅÂ
+	STATE_IN_ROOM   // ¹æ ¾È¿¡ ÀÖ´Â »óÅÂ
 } ClientAppState;
 
-volatile ClientAppState app_current_state = STATE_LOBBY; // í˜„ì¬ í´ë¼ì´ì–¸íŠ¸ ì•± ìƒíƒœ
-int client_socket_fd;                           // í´ë¼ì´ì–¸íŠ¸ ì†Œì¼“ íŒŒì¼ ë””ìŠ¤í¬ë¦½í„°
-char client_nickname[NICK_SIZE] = "ìµëª…";       // í´ë¼ì´ì–¸íŠ¸ ë‹‰ë„¤ì„
-volatile int client_is_nick_set = 0;            // ë‹‰ë„¤ì„ ì„¤ì • ì—¬ë¶€
-int client_current_room_id = -1;                // í˜„ì¬ ì…ì¥í•œ ë°© ID
-char client_current_room_name[ROOM_NAME_SIZE] = ""; // í˜„ì¬ ì…ì¥í•œ ë°© ì´ë¦„
-char answer_input_buffer[BUFFER_SIZE] = "";     // ì •ë‹µ ì…ë ¥ ë²„í¼
-int answer_input_len = 0;                       // ì •ë‹µ ì…ë ¥ ë²„í¼ ê¸¸ì´
+volatile ClientAppState app_current_state = STATE_LOBBY; // ÇöÀç Å¬¶óÀÌ¾ğÆ® ¾Û »óÅÂ
+int client_socket_fd;                           // Å¬¶óÀÌ¾ğÆ® ¼ÒÄÏ ÆÄÀÏ µğ½ºÅ©¸³ÅÍ
+char client_nickname[NICK_SIZE] = "ÀÍ¸í";       // Å¬¶óÀÌ¾ğÆ® ´Ğ³×ÀÓ
+volatile int client_is_nick_set = 0;            // ´Ğ³×ÀÓ ¼³Á¤ ¿©ºÎ
+int client_current_room_id = -1;                // ÇöÀç ÀÔÀåÇÑ ¹æ ID
+char client_current_room_name[ROOM_NAME_SIZE] = ""; // ÇöÀç ÀÔÀåÇÑ ¹æ ÀÌ¸§
+char answer_input_buffer[BUFFER_SIZE] = "";     // Á¤´ä ÀÔ·Â ¹öÆÛ
+int answer_input_len = 0;                       // Á¤´ä ÀÔ·Â ¹öÆÛ ±æÀÌ
 char ime_composition[BUFFER_SIZE] = "";
 int ime_cursor = 0;
-Uint32 round_start_tick = 0; // ë¼ìš´ë“œ ì¢…ë£Œ ì‹œê° (ms ë‹¨ìœ„)
-int round_duration_seconds = 60; // ì œí•œ ì‹œê°„ 
+Uint32 round_start_tick = 0; // ¶ó¿îµå Á¾·á ½Ã°¢ (ms ´ÜÀ§)
+int round_duration_seconds = 60; // Á¦ÇÑ ½Ã°£ 
 
-// ì„œë²„ ë©”ì‹œì§€ ìˆ˜ì‹  ë²„í¼
+// ¼­¹ö ¸Ş½ÃÁö ¼ö½Å ¹öÆÛ
 char server_message_buffer[INPUT_BUFFER_SIZE];
 int server_message_len = 0;
 int is_current_user_drawer = 0;
 
-// SDL ê´€ë ¨ ì „ì—­ ë³€ìˆ˜
+// SDL °ü·Ã Àü¿ª º¯¼ö
 SDL_Window* app_sdl_window = NULL;
 SDL_Renderer* app_sdl_renderer = NULL;
-SDL_Texture* app_drawing_canvas_texture = NULL; // ê·¸ë¦¼ ê·¸ë¦¬ëŠ” ìº”ë²„ìŠ¤ í…ìŠ¤ì²˜
-TTF_Font* app_ui_font = NULL;                   // UI í…ìŠ¤íŠ¸ìš© í°íŠ¸
-volatile int sdl_should_be_active = 0;          // SDL UI í™œì„±í™” í•„ìš” í”Œë˜ê·¸
-volatile int sdl_render_loop_running = 0;       // SDL ë Œë”ë§ ë£¨í”„ ì‹¤í–‰ ì¤‘ ì—¬ë¶€
-volatile int main_program_should_run = 1;       // ë©”ì¸ í”„ë¡œê·¸ë¨ ì‹¤í–‰ í”Œë˜ê·¸
+SDL_Texture* app_drawing_canvas_texture = NULL; // ±×¸² ±×¸®´Â Äµ¹ö½º ÅØ½ºÃ³
+TTF_Font* app_ui_font = NULL;                   // UI ÅØ½ºÆ®¿ë ÆùÆ®
+volatile int sdl_should_be_active = 0;          // SDL UI È°¼ºÈ­ ÇÊ¿ä ÇÃ·¡±×
+volatile int sdl_render_loop_running = 0;       // SDL ·»´õ¸µ ·çÇÁ ½ÇÇà Áß ¿©ºÎ
+volatile int main_program_should_run = 1;       // ¸ŞÀÎ ÇÁ·Î±×·¥ ½ÇÇà ÇÃ·¡±×
 
-// ë¡œì»¬ ë“œë¡œì‰ìš© ë³€ìˆ˜
+// ·ÎÄÃ µå·ÎÀ×¿ë º¯¼ö
 int local_mouse_is_drawing = 0;
 int local_mouse_last_x = -1;
 int local_mouse_last_y = -1;
 
-// ìˆ˜ì‹ í•œ ê·¸ë¦¼ ë°ì´í„°ë¥¼ ì €ì¥í•˜ëŠ” êµ¬ì¡°ì²´
+// ¼ö½ÅÇÑ ±×¸² µ¥ÀÌÅÍ¸¦ ÀúÀåÇÏ´Â ±¸Á¶Ã¼
 typedef struct {
-    int type; // 0: POINT, 1: LINE, 2: CLEAR
-    int x1, y1, x2, y2, color_index, size;
+	int type; // 0: POINT, 1: LINE, 2: CLEAR
+	int x1, y1, x2, y2, color_index, size;
 } ReceivedDrawData;
 
-ReceivedDrawData *received_draw_commands = NULL; // ìˆ˜ì‹ ëœ ë“œë¡œì‰ ëª…ë ¹ ë°°ì—´
-int received_draw_commands_count = 0;            // ìˆ˜ì‹ ëœ ë“œë¡œì‰ ëª…ë ¹ ê°œìˆ˜
-int received_draw_commands_capacity = 20;        // ì´ˆê¸° ìš©ëŸ‰
-pthread_mutex_t received_draw_commands_lock;     // ë“œë¡œì‰ ëª…ë ¹ ì ‘ê·¼ ë³´í˜¸ ë®¤í…ìŠ¤
+ReceivedDrawData* received_draw_commands = NULL; // ¼ö½ÅµÈ µå·ÎÀ× ¸í·É ¹è¿­
+int received_draw_commands_count = 0;            // ¼ö½ÅµÈ µå·ÎÀ× ¸í·É °³¼ö
+int received_draw_commands_capacity = 20;        // ÃÊ±â ¿ë·®
+pthread_mutex_t received_draw_commands_lock;     // µå·ÎÀ× ¸í·É Á¢±Ù º¸È£ ¹ÂÅØ½º
 
-// ìŠ¤ë ˆë“œ
-pthread_t server_message_receiver_tid; // ì„œë²„ ë©”ì‹œì§€ ìˆ˜ì‹  ìŠ¤ë ˆë“œ ID
+// ½º·¹µå
+pthread_t server_message_receiver_tid; // ¼­¹ö ¸Ş½ÃÁö ¼ö½Å ½º·¹µå ID
 
-// --- í•¨ìˆ˜ í”„ë¡œí† íƒ€ì… ---
+// --- ÇÔ¼ö ÇÁ·ÎÅäÅ¸ÀÔ ---
 void send_formatted_message_to_server(const char* type_or_full_cmd, const char* payload);
 void* server_message_receiver_thread_func(void* arg);
 void initialize_sdl_environment();
@@ -97,856 +97,880 @@ void render_sdl_ui_elements();
 void handle_sdl_mouse_click_on_ui(int x, int y);
 void client_side_clear_canvas_and_notify_server();
 void draw_text(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color) {
-    extern TTF_Font* app_ui_font; // ì „ì—­ í°íŠ¸
-    SDL_Surface* surface = TTF_RenderUTF8_Blended(app_ui_font, text, color);
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_Rect dst = { x, y, surface->w, surface->h };
-    SDL_RenderCopy(renderer, texture, NULL, &dst);
-    SDL_FreeSurface(surface);
-    SDL_DestroyTexture(texture);
+	extern TTF_Font* app_ui_font; // Àü¿ª ÆùÆ®
+	SDL_Surface* surface = TTF_RenderUTF8_Blended(app_ui_font, text, color);
+	SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+	SDL_Rect dst = { x, y, surface->w, surface->h };
+	SDL_RenderCopy(renderer, texture, NULL, &dst);
+	SDL_FreeSurface(surface);
+	SDL_DestroyTexture(texture);
 }
-// ì •ë‹µ ê²°ê³¼ í‘œì‹œìš© ë³€ìˆ˜ (ì¶”ê°€ë¨)
+// Á¤´ä °á°ú Ç¥½Ã¿ë º¯¼ö (Ãß°¡µÊ)
 char sdl_answer_result_text[BUFFER_SIZE] = "";
-Uint32 answer_result_display_tick = 0; // ë©”ì‹œì§€ í‘œì‹œ ì‹œì‘ ì‹œê°„ (SDL_GetTicks() ê°’)
+Uint32 answer_result_display_tick = 0; // ¸Ş½ÃÁö Ç¥½Ã ½ÃÀÛ ½Ã°£ (SDL_GetTicks() °ª)
 
-// --- ë©”ì‹œì§€ ì „ì†¡ í•¨ìˆ˜ ---
+// --- ¸Ş½ÃÁö Àü¼Û ÇÔ¼ö ---
 void send_formatted_message_to_server(const char* type_or_full_cmd, const char* payload) {
-    char final_message_to_send[BUFFER_SIZE];
-    if (payload && strlen(payload) > 0) {
-        snprintf(final_message_to_send, BUFFER_SIZE, "%s:%s\n", type_or_full_cmd, payload);
-    } else {
-        snprintf(final_message_to_send, BUFFER_SIZE, "%s\n", type_or_full_cmd);
-    }
-    if (send(client_socket_fd, final_message_to_send, strlen(final_message_to_send), 0) < 0) {
-        perror("send to server failed");
-    }
+	char final_message_to_send[BUFFER_SIZE];
+	if (payload && strlen(payload) > 0) {
+		snprintf(final_message_to_send, BUFFER_SIZE, "%s:%s\n", type_or_full_cmd, payload);
+	}
+	else {
+		snprintf(final_message_to_send, BUFFER_SIZE, "%s\n", type_or_full_cmd);
+	}
+	if (send(client_socket_fd, final_message_to_send, strlen(final_message_to_send), 0) < 0) {
+		perror("send to server failed");
+	}
 }
 
-// --- ì„œë²„ ë©”ì‹œì§€ ìˆ˜ì‹  ìŠ¤ë ˆë“œ ---
+// --- ¼­¹ö ¸Ş½ÃÁö ¼ö½Å ½º·¹µå ---
 void* server_message_receiver_thread_func(void* arg) {
-    char temp_chunk_buffer[BUFFER_SIZE];
-    char sdl_answer_result_text[128] = "";
-    char server_response_line[INPUT_BUFFER_SIZE];
-    Uint32 answer_result_display_tick = 0;
+	char temp_chunk_buffer[BUFFER_SIZE];
+	char sdl_answer_result_text[128] = "";
+	char server_response_line[INPUT_BUFFER_SIZE];
+	Uint32 answer_result_display_tick = 0;
 
-    int bytes_read;
-    printf("[í´ë¼ì´ì–¸íŠ¸:ìˆ˜ì‹ ìŠ¤ë ˆë“œ] ì‹œì‘ë¨.\n");
+	int bytes_read;
+	printf("[Å¬¶óÀÌ¾ğÆ®:¼ö½Å½º·¹µå] ½ÃÀÛµÊ.\n");
 
-    while (main_program_should_run) {
-        bytes_read = recv(client_socket_fd, temp_chunk_buffer, BUFFER_SIZE - 1, 0);
-        if (bytes_read <= 0) {
-            if (bytes_read == 0) printf("\r[í´ë¼ì´ì–¸íŠ¸:ìˆ˜ì‹ ìŠ¤ë ˆë“œ] ì„œë²„ ì—°ê²° ì •ìƒ ì¢…ë£Œë¨.\n> ");
-            else perror("\r[í´ë¼ì´ì–¸íŠ¸:ìˆ˜ì‹ ìŠ¤ë ˆë“œ] ì„œë²„ ë©”ì‹œì§€ ìˆ˜ì‹  ì˜¤ë¥˜");
-            main_program_should_run = 0;
-            Uint32 now = SDL_GetTicks();
-	if (now - answer_result_display_tick < 2000 && strlen(sdl_answer_result_text) > 0) {
-    		SDL_Color color;
-		if (strstr(sdl_answer_result_text, "ì •ë‹µì…ë‹ˆë‹¤!")) {
-    			color = (SDL_Color){0, 255, 0};  // ì´ˆë¡ìƒ‰
-		} else {
-    			color = (SDL_Color){255, 0, 0};  // ë¹¨ê°„ìƒ‰
+	while (main_program_should_run) {
+		bytes_read = recv(client_socket_fd, temp_chunk_buffer, BUFFER_SIZE - 1, 0);
+		if (bytes_read <= 0) {
+			if (bytes_read == 0) printf("\r[Å¬¶óÀÌ¾ğÆ®:¼ö½Å½º·¹µå] ¼­¹ö ¿¬°á Á¤»ó Á¾·áµÊ.\n> ");
+			else perror("\r[Å¬¶óÀÌ¾ğÆ®:¼ö½Å½º·¹µå] ¼­¹ö ¸Ş½ÃÁö ¼ö½Å ¿À·ù");
+			main_program_should_run = 0;
+			Uint32 now = SDL_GetTicks();
+			if (now - answer_result_display_tick < 2000 && strlen(sdl_answer_result_text) > 0) {
+				SDL_Color color;
+				if (strstr(sdl_answer_result_text, "Á¤´äÀÔ´Ï´Ù!")) {
+					color = (SDL_Color){ 0, 255, 0 };  // ÃÊ·Ï»ö
+				}
+				else {
+					color = (SDL_Color){ 255, 0, 0 };  // »¡°£»ö
+				}
+
+				draw_text(app_sdl_renderer, sdl_answer_result_text, 120, 30, color);
+			}
+			if (SDL_GetTicks() - answer_result_display_tick > 2000) {
+				sdl_answer_result_text[0] = '\0';
+			}
+			else if (strncmp(server_response_line, "TIMER:", 6) == 0) {
+				int time_left = atoi(server_response_line + 6);
+				round_start_tick = SDL_GetTicks();
+				round_duration_seconds = time_left;
+				printf("[Å¬¶óÀÌ¾ğÆ®:TIMER] %dÃÊ·Î ¼³Á¤µÊ\n", time_left);
+			}
+
+
+			if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL ·çÇÁ Á¾·á À¯µµ
+			break;
+		}
+		temp_chunk_buffer[bytes_read] = '\0'; // ³Î Á¾·á
+
+		// ¹öÆÛ ¿À¹öÇÃ·Î¿ì ¹æÁö ¹× ¸Ş½ÃÁö Ãß°¡
+		if (server_message_len + bytes_read < INPUT_BUFFER_SIZE) {
+			strncat(server_message_buffer, temp_chunk_buffer, bytes_read);
+			server_message_len += bytes_read;
+		}
+		else {
+			fprintf(stderr, "\r[Å¬¶óÀÌ¾ğÆ®:¼ö½Å½º·¹µå] ¼ö½Å ¹öÆÛ ¿À¹öÇÃ·Î¿ì. ¹öÆÛ ÃÊ±âÈ­.\n> ");
+			server_message_len = 0; memset(server_message_buffer, 0, INPUT_BUFFER_SIZE);
+			continue; // ´ÙÀ½ ¼ö½Å ½Ãµµ
 		}
 
-	draw_text(app_sdl_renderer, sdl_answer_result_text, 120, 30, color);
+		// ¶óÀÎ ´ÜÀ§·Î ¸Ş½ÃÁö Ã³¸®
+		char* current_line_ptr = server_message_buffer;
+		char* newline_char_found;
+		while ((newline_char_found = strchr(current_line_ptr, '\n')) != NULL) {
+			*newline_char_found = '\0'; // °³Çà ¹®ÀÚ¸¦ ³Î ¹®ÀÚ·Î ¹Ù²ã ¶óÀÎ ³¡ Ç¥½Ã
+			strcpy(server_response_line, current_line_ptr); // ÇöÀç ¶óÀÎ º¹»ç
+			if (strstr(server_response_line, "Á¤´äÀÔ´Ï´Ù!") != NULL) {
+				round_start_tick = SDL_GetTicks();
+				round_duration_seconds = 60;  // È¤Àº ¼­¹ö¿¡¼­ Àü´Ş¹ŞÀº ½Ã°£ »ç¿ë
+			}
+			if (strncmp(server_response_line, "SMSG:Á¦½Ã¾î´Â '", 15) == 0) {
+				is_current_user_drawer = 1;
+			}
+			else if (strstr(server_response_line, "´ÔÀÌ ÃâÁ¦ÀÚÀÔ´Ï´Ù.") != NULL) {
+				is_current_user_drawer = strstr(server_response_line, client_nickname) != NULL;
+			}
+			else if (strncmp(server_response_line, "TIMER:", 6) == 0) {
+				int time_left = atoi(server_response_line + 6);
+				round_start_tick = SDL_GetTicks();
+				round_duration_seconds = time_left;
+			}
+
+
+			// ÀÏ¹İ ¸Ş½ÃÁö Ãâ·Â (È­¸é¿¡ Ç¥½Ã)
+			if (strncmp(server_response_line, "MSG:", 4) == 0) {
+				printf("\r%s\n> ", server_response_line + 4);
+			}
+			// ±×¸®±â ¸Ş½ÃÁö(DRAW_*)°¡ ¾Æ´Ï¸é¼­ ½Ã½ºÅÛ ¸Ş½ÃÁö/¿¡·¯/¹æ ¸ñ·ÏÀÎ °æ¿ì
+			else if (strncmp(server_response_line, "DRAW_", 5) != 0) {
+				if (strncmp(server_response_line, "SMSG:¹æ", 7) == 0 || strncmp(server_response_line, "SMSG:´Ğ³×ÀÓÀÌ", 10) == 0) {
+					printf("\r[Å¬¶óÀÌ¾ğÆ® ½Ã½ºÅÛ] %s\n> ", server_response_line);
+				}
+				else if (strncmp(server_response_line, "ROOM_EVENT:", 11) == 0) {
+					printf("\r%s\n> ", server_response_line + 11);
+				}
+				else if (strncmp(server_response_line, "SMSG:", 5) == 0 || strncmp(server_response_line, "ERR_", 4) == 0 || strncmp(server_response_line, "ROOMLIST:", 9) == 0) {
+					printf("\r[¼­¹ö ÀÀ´ä] %s\n> ", server_response_line);
+				}
+			}
+			fflush(stdout); // Áï½Ã ÅÍ¹Ì³Î¿¡ Ãâ·Â
+
+			// === Å¬¶óÀÌ¾ğÆ® »óÅÂ º¯È­ Ã³¸® ===
+			if (strncmp(server_response_line, "SMSG:", 5) == 0) {
+				const char* smsg_payload_content = server_response_line + 5;
+				char temp_room_name[ROOM_NAME_SIZE];
+				int temp_room_id;
+
+				// ´Ğ³×ÀÓ ¼³Á¤ È®ÀÎ
+				if (strstr(smsg_payload_content, "´Ğ³×ÀÓÀÌ ¼³Á¤µÇ¾ú½À´Ï´Ù.") || strstr(smsg_payload_content, "(À¸)·Î ¼³Á¤µÇ¾ú½À´Ï´Ù.")) {
+					char confirmed_nickname_str[NICK_SIZE];
+					if (sscanf(smsg_payload_content, "´Ğ³×ÀÓÀÌ '%[^']'(À¸)·Î ¼³Á¤µÇ¾ú½À´Ï´Ù.", confirmed_nickname_str) == 1) {
+						strcpy(client_nickname, confirmed_nickname_str);
+						client_is_nick_set = 1;
+					}
+				}
+				// ¹æ ÀÔÀå/»ı¼º È®ÀÎ
+				else if (sscanf(smsg_payload_content, "¹æ '%[^']'(ID:%d)¿¡ ÀÔÀåÇß½À´Ï´Ù.", temp_room_name, &temp_room_id) == 2 ||
+					sscanf(smsg_payload_content, "¹æ '%[^']'(ID:%d)ÀÌ(°¡) »ı¼ºµÇ¾ú°í ÀÔÀåÇß½À´Ï´Ù.", temp_room_name, &temp_room_id) == 2) {
+					strcpy(client_current_room_name, temp_room_name);
+					client_current_room_id = temp_room_id;
+					app_current_state = STATE_IN_ROOM;
+					if (client_is_nick_set) sdl_should_be_active = 1; // ´Ğ³×ÀÓ ¼³Á¤µÇ¾úÀ¸¸é SDL UI È°¼ºÈ­ ¿äÃ»
+				}
+				// ¹æ ÅğÀå È®ÀÎ
+				else if (strstr(smsg_payload_content, "¹æ¿¡¼­ ÅğÀåÇß½À´Ï´Ù.")) {
+					app_current_state = STATE_LOBBY;
+					client_current_room_id = -1;
+					strcpy(client_current_room_name, "");
+					if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL ·çÇÁ Á¾·á À¯µµ
+				}
+				// Á¤´ä/¿À´ä ¸Ş½ÃÁö Ã³¸® (Ãß°¡µÊ)
+				else if (strncmp(smsg_payload_content, "Á¤´äÀÔ´Ï´Ù", 12) == 0 ||
+					strncmp(smsg_payload_content, "¿À´äÀÔ´Ï´Ù", 13) == 0) {
+					strncpy(sdl_answer_result_text, smsg_payload_content, sizeof(sdl_answer_result_text) - 1);
+					sdl_answer_result_text[sizeof(sdl_answer_result_text) - 1] = '\0';
+					answer_result_display_tick = SDL_GetTicks(); // ¸Ş½ÃÁö Ç¥½Ã ½ÃÀÛ ½Ã°£ ±â·Ï
+				}
+			}
+
+			// === µå·ÎÀ× ¸í·É Ã³¸® (¹ŞÀº µå·ÎÀ× µ¥ÀÌÅÍ¸¦ Å¥¿¡ Ãß°¡) ===
+			else if (strncmp(server_response_line, "DRAW_POINT:", 11) == 0) {
+				ReceivedDrawData data = { 0 };
+				data.type = 0; // POINT
+				if (sscanf(server_response_line + 11, "%d,%d,%d,%d", &data.x1, &data.y1, &data.color_index, &data.size) == 4) {
+					pthread_mutex_lock(&received_draw_commands_lock);
+					if (received_draw_commands_count >= received_draw_commands_capacity) {
+						received_draw_commands_capacity *= 2;
+						received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+						if (!received_draw_commands) { perror("realloc draw point failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break; }
+					}
+					received_draw_commands[received_draw_commands_count++] = data;
+					pthread_mutex_unlock(&received_draw_commands_lock);
+				}
+			}
+			else if (strncmp(server_response_line, "DRAW_LINE:", 10) == 0) {
+				ReceivedDrawData data = { 0 };
+				data.type = 1; // LINE
+				if (sscanf(server_response_line + 10, "%d,%d,%d,%d,%d,%d", &data.x1, &data.y1, &data.x2, &data.y2, &data.color_index, &data.size) == 6) {
+					pthread_mutex_lock(&received_draw_commands_lock);
+					if (received_draw_commands_count >= received_draw_commands_capacity) {
+						received_draw_commands_capacity *= 2;
+						received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+						if (!received_draw_commands) { perror("realloc draw line failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break; }
+					}
+					received_draw_commands[received_draw_commands_count++] = data;
+					pthread_mutex_unlock(&received_draw_commands_lock);
+				}
+			}
+			else if (strcmp(server_response_line, "DRAW_CLEAR") == 0) {
+				ReceivedDrawData data = { 0 };
+				data.type = 2; // CLEAR ¸í·É
+				pthread_mutex_lock(&received_draw_commands_lock);
+				if (received_draw_commands_count >= received_draw_commands_capacity) {
+					received_draw_commands_capacity *= 2;
+					received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+					if (!received_draw_commands) {
+						perror("realloc draw clear (CLEAR) failed");
+						pthread_mutex_unlock(&received_draw_commands_lock);
+						main_program_should_run = 0;
+						break;
+					}
+				}
+				received_draw_commands[received_draw_commands_count++] = data;
+				pthread_mutex_unlock(&received_draw_commands_lock);
+			}
+			else if (strcmp(server_response_line, "CLEAR") == 0) {
+				ReceivedDrawData data = { 0 };
+				data.type = 2; // CLEAR
+				pthread_mutex_lock(&received_draw_commands_lock);
+				if (received_draw_commands_count >= received_draw_commands_capacity) {
+					received_draw_commands_capacity *= 2;
+					received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+					if (!received_draw_commands) { perror("realloc draw clear failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break; }
+				}
+				received_draw_commands[received_draw_commands_count++] = data;
+				pthread_mutex_unlock(&received_draw_commands_lock);
+			}
+			current_line_ptr = newline_char_found + 1; // ´ÙÀ½ ¶óÀÎÀÇ ½ÃÀÛ ÁöÁ¡ °»½Å
+		}
+		// Ã³¸®µÇÁö ¾ÊÀº ÀÜ¿© µ¥ÀÌÅÍ°¡ ÀÖ´Ù¸é ¹öÆÛÀÇ ¾ÕÀ¸·Î ÀÌµ¿
+		if (current_line_ptr > server_message_buffer && strlen(current_line_ptr) > 0) {
+			char temp_buf[INPUT_BUFFER_SIZE]; strcpy(temp_buf, current_line_ptr);
+			memset(server_message_buffer, 0, INPUT_BUFFER_SIZE); strcpy(server_message_buffer, temp_buf);
+			server_message_len = strlen(server_message_buffer);
+		}
+		else {
+			// ¸ğµç ¶óÀÎ Ã³¸® ¿Ï·á ¶Ç´Â ÀÜ¿© µ¥ÀÌÅÍ ¾øÀ½
+			server_message_len = 0; memset(server_message_buffer, 0, INPUT_BUFFER_SIZE);
+		}
 	}
-	if (SDL_GetTicks() - answer_result_display_tick > 2000) {
-        	sdl_answer_result_text[0] = '\0';
-	}
-	else if (strncmp(server_response_line, "TIMER:", 6) == 0) {
-        int time_left = atoi(server_response_line + 6);  
-        round_start_tick = SDL_GetTicks();
-        round_duration_seconds = time_left;
-        printf("[í´ë¼ì´ì–¸íŠ¸:TIMER] %dì´ˆë¡œ ì„¤ì •ë¨\n", time_left);
-	}
-
-
-        if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL ë£¨í”„ ì¢…ë£Œ ìœ ë„
-        break;
-        }
-        temp_chunk_buffer[bytes_read] = '\0'; // ë„ ì¢…ë£Œ
-
-        // ë²„í¼ ì˜¤ë²„í”Œë¡œìš° ë°©ì§€ ë° ë©”ì‹œì§€ ì¶”ê°€
-        if (server_message_len + bytes_read < INPUT_BUFFER_SIZE) {
-            strncat(server_message_buffer, temp_chunk_buffer, bytes_read);
-            server_message_len += bytes_read;
-        } else {
-            fprintf(stderr, "\r[í´ë¼ì´ì–¸íŠ¸:ìˆ˜ì‹ ìŠ¤ë ˆë“œ] ìˆ˜ì‹  ë²„í¼ ì˜¤ë²„í”Œë¡œìš°. ë²„í¼ ì´ˆê¸°í™”.\n> ");
-            server_message_len = 0; memset(server_message_buffer, 0, INPUT_BUFFER_SIZE);
-            continue; // ë‹¤ìŒ ìˆ˜ì‹  ì‹œë„
-        }
-
-        // ë¼ì¸ ë‹¨ìœ„ë¡œ ë©”ì‹œì§€ ì²˜ë¦¬
-        char* current_line_ptr = server_message_buffer;
-        char* newline_char_found;
-        while ((newline_char_found = strchr(current_line_ptr, '\n')) != NULL) {
-            *newline_char_found = '\0'; // ê°œí–‰ ë¬¸ìë¥¼ ë„ ë¬¸ìë¡œ ë°”ê¿” ë¼ì¸ ë í‘œì‹œ
-            strcpy(server_response_line, current_line_ptr); // í˜„ì¬ ë¼ì¸ ë³µì‚¬
-           if (strstr(server_response_line, "ì •ë‹µì…ë‹ˆë‹¤!") != NULL) {
-    		round_start_tick = SDL_GetTicks();
-    		round_duration_seconds = 60;  // í˜¹ì€ ì„œë²„ì—ì„œ ì „ë‹¬ë°›ì€ ì‹œê°„ ì‚¬ìš©
-	   }
-           if (strncmp(server_response_line, "SMSG:ì œì‹œì–´ëŠ” '", 15) == 0) {
-    is_current_user_drawer = 1;
-}
-else if (strstr(server_response_line, "ë‹˜ì´ ì¶œì œìì…ë‹ˆë‹¤.") != NULL) {
-    is_current_user_drawer = strstr(server_response_line, client_nickname) != NULL;
-}
-else if (strncmp(server_response_line, "TIMER:", 6) == 0) {
-    int time_left = atoi(server_response_line + 6);
-    round_start_tick = SDL_GetTicks();
-    round_duration_seconds = time_left;
+	printf("[Å¬¶óÀÌ¾ğÆ®:¼ö½Å½º·¹µå] Á¾·áµÊ.\n");
+	return NULL;
 }
 
 
-            // ì¼ë°˜ ë©”ì‹œì§€ ì¶œë ¥ (í™”ë©´ì— í‘œì‹œ)
-            if (strncmp(server_response_line, "MSG:", 4) == 0) {
-                printf("\r%s\n> ", server_response_line + 4);
-            }
-            // ê·¸ë¦¬ê¸° ë©”ì‹œì§€(DRAW_*)ê°€ ì•„ë‹ˆë©´ì„œ ì‹œìŠ¤í…œ ë©”ì‹œì§€/ì—ëŸ¬/ë°© ëª©ë¡ì¸ ê²½ìš°
-            else if (strncmp(server_response_line, "DRAW_", 5) != 0) {
-                if (strncmp(server_response_line, "SMSG:ë°©", 7) == 0 || strncmp(server_response_line, "SMSG:ë‹‰ë„¤ì„ì´", 10) == 0) {
-                    printf("\r[í´ë¼ì´ì–¸íŠ¸ ì‹œìŠ¤í…œ] %s\n> ", server_response_line);
-                } else if (strncmp(server_response_line, "ROOM_EVENT:", 11) == 0) {
-                    printf("\r%s\n> ", server_response_line + 11);
-                } else if (strncmp(server_response_line, "SMSG:", 5) == 0 || strncmp(server_response_line, "ERR_", 4) == 0 || strncmp(server_response_line, "ROOMLIST:", 9) == 0) {
-                    printf("\r[ì„œë²„ ì‘ë‹µ] %s\n> ", server_response_line);
-                }
-            }
-            fflush(stdout); // ì¦‰ì‹œ í„°ë¯¸ë„ì— ì¶œë ¥
-
-            // === í´ë¼ì´ì–¸íŠ¸ ìƒíƒœ ë³€í™” ì²˜ë¦¬ ===
-            if (strncmp(server_response_line, "SMSG:", 5) == 0) {
-                const char* smsg_payload_content = server_response_line + 5;
-                char temp_room_name[ROOM_NAME_SIZE];
-                int temp_room_id;
-
-                // ë‹‰ë„¤ì„ ì„¤ì • í™•ì¸
-                if (strstr(smsg_payload_content, "ë‹‰ë„¤ì„ì´ ì„¤ì •ë˜ì—ˆìŠµë‹ˆë‹¤.") || strstr(smsg_payload_content, "(ìœ¼)ë¡œ ì„¤ì •ë˜ì—ˆìŠµë‹ˆë‹¤.")) {
-                    char confirmed_nickname_str[NICK_SIZE];
-                    if (sscanf(smsg_payload_content, "ë‹‰ë„¤ì„ì´ '%[^']'(ìœ¼)ë¡œ ì„¤ì •ë˜ì—ˆìŠµë‹ˆë‹¤.", confirmed_nickname_str) == 1) {
-                        strcpy(client_nickname, confirmed_nickname_str);
-                        client_is_nick_set = 1;
-                    }
-                }
-                // ë°© ì…ì¥/ìƒì„± í™•ì¸
-                else if (sscanf(smsg_payload_content, "ë°© '%[^']'(ID:%d)ì— ì…ì¥í–ˆìŠµë‹ˆë‹¤.", temp_room_name, &temp_room_id) == 2 ||
-                         sscanf(smsg_payload_content, "ë°© '%[^']'(ID:%d)ì´(ê°€) ìƒì„±ë˜ì—ˆê³  ì…ì¥í–ˆìŠµë‹ˆë‹¤.", temp_room_name, &temp_room_id) == 2) {
-                    strcpy(client_current_room_name, temp_room_name);
-                    client_current_room_id = temp_room_id;
-                    app_current_state = STATE_IN_ROOM;
-                    if (client_is_nick_set) sdl_should_be_active = 1; // ë‹‰ë„¤ì„ ì„¤ì •ë˜ì—ˆìœ¼ë©´ SDL UI í™œì„±í™” ìš”ì²­
-                }
-                // ë°© í‡´ì¥ í™•ì¸
-                else if (strstr(smsg_payload_content, "ë°©ì—ì„œ í‡´ì¥í–ˆìŠµë‹ˆë‹¤.")) {
-                    app_current_state = STATE_LOBBY;
-                    client_current_room_id = -1;
-                    strcpy(client_current_room_name, "");
-                    if (sdl_render_loop_running) sdl_should_be_active = 0; // SDL ë£¨í”„ ì¢…ë£Œ ìœ ë„
-                }
-                // ì •ë‹µ/ì˜¤ë‹µ ë©”ì‹œì§€ ì²˜ë¦¬ (ì¶”ê°€ë¨)
-                else if (strncmp(smsg_payload_content, "ì •ë‹µì…ë‹ˆë‹¤", 12) == 0 ||
-                         strncmp(smsg_payload_content, "ì˜¤ë‹µì…ë‹ˆë‹¤", 13) == 0) {
-                    strncpy(sdl_answer_result_text, smsg_payload_content, sizeof(sdl_answer_result_text) - 1);
-                    sdl_answer_result_text[sizeof(sdl_answer_result_text) - 1] = '\0';
-                    answer_result_display_tick = SDL_GetTicks(); // ë©”ì‹œì§€ í‘œì‹œ ì‹œì‘ ì‹œê°„ ê¸°ë¡
-                }
-            }
-
-            // === ë“œë¡œì‰ ëª…ë ¹ ì²˜ë¦¬ (ë°›ì€ ë“œë¡œì‰ ë°ì´í„°ë¥¼ íì— ì¶”ê°€) ===
-            else if (strncmp(server_response_line, "DRAW_POINT:", 11) == 0) {
-                ReceivedDrawData data = {0};
-                data.type = 0; // POINT
-                if (sscanf(server_response_line + 11, "%d,%d,%d,%d", &data.x1, &data.y1, &data.color_index, &data.size) == 4) {
-                    pthread_mutex_lock(&received_draw_commands_lock);
-                    if (received_draw_commands_count >= received_draw_commands_capacity) {
-                        received_draw_commands_capacity *= 2;
-                        received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-                        if (!received_draw_commands) { perror("realloc draw point failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break;}
-                    }
-                    received_draw_commands[received_draw_commands_count++] = data;
-                    pthread_mutex_unlock(&received_draw_commands_lock);
-                }
-            } else if (strncmp(server_response_line, "DRAW_LINE:", 10) == 0) {
-                ReceivedDrawData data = {0};
-                data.type = 1; // LINE
-                if (sscanf(server_response_line + 10, "%d,%d,%d,%d,%d,%d", &data.x1, &data.y1, &data.x2, &data.y2, &data.color_index, &data.size) == 6) {
-                    pthread_mutex_lock(&received_draw_commands_lock);
-                    if (received_draw_commands_count >= received_draw_commands_capacity) {
-                        received_draw_commands_capacity *= 2;
-                        received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-                        if (!received_draw_commands) { perror("realloc draw line failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break;}
-                    }
-                    received_draw_commands[received_draw_commands_count++] = data;
-                    pthread_mutex_unlock(&received_draw_commands_lock);
-                }
-            } else if (strcmp(server_response_line, "DRAW_CLEAR") == 0) {
-    ReceivedDrawData data = {0};
-    data.type = 2; // CLEAR ëª…ë ¹
-    pthread_mutex_lock(&received_draw_commands_lock);
-    if (received_draw_commands_count >= received_draw_commands_capacity) {
-        received_draw_commands_capacity *= 2;
-        received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-        if (!received_draw_commands) {
-            perror("realloc draw clear (CLEAR) failed");
-            pthread_mutex_unlock(&received_draw_commands_lock);
-            main_program_should_run = 0;
-            break;
-        }
-    }
-    received_draw_commands[received_draw_commands_count++] = data;
-    pthread_mutex_unlock(&received_draw_commands_lock);
-} else if (strcmp(server_response_line, "CLEAR") == 0) {
-                ReceivedDrawData data = {0};
-                data.type = 2; // CLEAR
-                pthread_mutex_lock(&received_draw_commands_lock);
-                if (received_draw_commands_count >= received_draw_commands_capacity) {
-                    received_draw_commands_capacity *= 2;
-                    received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-                    if (!received_draw_commands) { perror("realloc draw clear failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break;}
-                }
-                received_draw_commands[received_draw_commands_count++] = data;
-                pthread_mutex_unlock(&received_draw_commands_lock);
-            }
-            current_line_ptr = newline_char_found + 1; // ë‹¤ìŒ ë¼ì¸ì˜ ì‹œì‘ ì§€ì  ê°±ì‹ 
-        }
-        // ì²˜ë¦¬ë˜ì§€ ì•Šì€ ì”ì—¬ ë°ì´í„°ê°€ ìˆë‹¤ë©´ ë²„í¼ì˜ ì•ìœ¼ë¡œ ì´ë™
-        if (current_line_ptr > server_message_buffer && strlen(current_line_ptr) > 0) {
-            char temp_buf[INPUT_BUFFER_SIZE]; strcpy(temp_buf, current_line_ptr);
-            memset(server_message_buffer, 0, INPUT_BUFFER_SIZE); strcpy(server_message_buffer, temp_buf);
-            server_message_len = strlen(server_message_buffer);
-        } else {
-            // ëª¨ë“  ë¼ì¸ ì²˜ë¦¬ ì™„ë£Œ ë˜ëŠ” ì”ì—¬ ë°ì´í„° ì—†ìŒ
-            server_message_len = 0; memset(server_message_buffer, 0, INPUT_BUFFER_SIZE);
-        }
-    }
-    printf("[í´ë¼ì´ì–¸íŠ¸:ìˆ˜ì‹ ìŠ¤ë ˆë“œ] ì¢…ë£Œë¨.\n");
-    return NULL;
-}
-
-// --- SDL í™˜ê²½ ì´ˆê¸°í™” ---
+// --- SDL È¯°æ ÃÊ±âÈ­ ---
 void initialize_sdl_environment() {
-    if (sdl_render_loop_running || app_sdl_window) {
-        // ì´ë¯¸ ì‹¤í–‰ ì¤‘ì´ê±°ë‚˜ ìœˆë„ìš°ê°€ ì¡´ì¬í•˜ë©´ ë‹¤ì‹œ ì´ˆê¸°í™”í•˜ì§€ ì•ŠìŒ
-        return;
-    }
-    printf("[í´ë¼ì´ì–¸íŠ¸:SDL] UI ì´ˆê¸°í™” ì‹œì‘ (ë°©: '%s', ë‹‰ë„¤ì„: '%s')\n", client_current_room_name, client_nickname);
+	if (sdl_render_loop_running || app_sdl_window) {
+		// ÀÌ¹Ì ½ÇÇà ÁßÀÌ°Å³ª À©µµ¿ì°¡ Á¸ÀçÇÏ¸é ´Ù½Ã ÃÊ±âÈ­ÇÏÁö ¾ÊÀ½
+		return;
+	}
+	printf("[Å¬¶óÀÌ¾ğÆ®:SDL] UI ÃÊ±âÈ­ ½ÃÀÛ (¹æ: '%s', ´Ğ³×ÀÓ: '%s')\n", client_current_room_name, client_nickname);
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) { fprintf(stderr, "SDL Init ì‹¤íŒ¨: %s\n", SDL_GetError()); main_program_should_run = 0; return; }
-    if (TTF_Init() == -1) { fprintf(stderr, "TTF Init ì‹¤íŒ¨: %s (ê³„ì† ì§„í–‰)\n", TTF_GetError()); }
+	if (SDL_Init(SDL_INIT_VIDEO) < 0) { fprintf(stderr, "SDL Init ½ÇÆĞ: %s\n", SDL_GetError()); main_program_should_run = 0; return; }
+	if (TTF_Init() == -1) { fprintf(stderr, "TTF Init ½ÇÆĞ: %s (°è¼Ó ÁøÇà)\n", TTF_GetError()); }
 
-    // í°íŠ¸ ë¡œë“œ
-    app_ui_font = TTF_OpenFont("DejaVuSans.ttf", 16);
-    if (!app_ui_font) {
-        fprintf(stderr, "í°íŠ¸ ë¡œë”© ì‹¤íŒ¨: %s\n", TTF_GetError());
-    } 
+	// ÆùÆ® ·Îµå
+	app_ui_font = TTF_OpenFont("DejaVuSans.ttf", 16);
+	if (!app_ui_font) {
+		fprintf(stderr, "ÆùÆ® ·Îµù ½ÇÆĞ: %s\n", TTF_GetError());
+	}
 
 
-    // ìœˆë„ìš° íƒ€ì´í‹€ ì„¤ì •
-    char win_title[128];
-    snprintf(win_title, sizeof(win_title), "ê·¸ë¦¼íŒ - ë°©: %s (%s)", client_current_room_name, client_nickname);
-    app_sdl_window = SDL_CreateWindow(win_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
-    if (!app_sdl_window) { fprintf(stderr, "ìœˆë„ìš° ìƒì„± ì‹¤íŒ¨: %s\n", SDL_GetError()); main_program_should_run = 0; SDL_Quit(); return; }
+	// À©µµ¿ì Å¸ÀÌÆ² ¼³Á¤
+	char win_title[128];
+	snprintf(win_title, sizeof(win_title), "±×¸²ÆÇ - ¹æ: %s (%s)", client_current_room_name, client_nickname);
+	app_sdl_window = SDL_CreateWindow(win_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
+	if (!app_sdl_window) { fprintf(stderr, "À©µµ¿ì »ı¼º ½ÇÆĞ: %s\n", SDL_GetError()); main_program_should_run = 0; SDL_Quit(); return; }
 
-    // ë Œë”ëŸ¬ ìƒì„±
-    app_sdl_renderer = SDL_CreateRenderer(app_sdl_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!app_sdl_renderer) { SDL_DestroyWindow(app_sdl_window); app_sdl_window=NULL; fprintf(stderr, "ë Œë”ëŸ¬ ìƒì„± ì‹¤íŒ¨: %s\n", SDL_GetError()); main_program_should_run = 0; SDL_Quit(); return; }
+	// ·»´õ·¯ »ı¼º
+	app_sdl_renderer = SDL_CreateRenderer(app_sdl_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (!app_sdl_renderer) { SDL_DestroyWindow(app_sdl_window); app_sdl_window = NULL; fprintf(stderr, "·»´õ·¯ »ı¼º ½ÇÆĞ: %s\n", SDL_GetError()); main_program_should_run = 0; SDL_Quit(); return; }
 
-    // ê·¸ë¦¼ ê·¸ë¦¬ê¸° ìº”ë²„ìŠ¤ í…ìŠ¤ì²˜ ìƒì„± (UI ì˜ì—­ ì œì™¸)
-    app_drawing_canvas_texture = SDL_CreateTexture(app_sdl_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WINDOW_WIDTH, WINDOW_HEIGHT - UI_AREA_HEIGHT);
-    if (!app_drawing_canvas_texture) { fprintf(stderr, "ìº”ë²„ìŠ¤ í…ìŠ¤ì²˜ ìƒì„± ì‹¤íŒ¨: %s\n", SDL_GetError()); shutdown_sdl_environment(); main_program_should_run = 0; return; }
+	// ±×¸² ±×¸®±â Äµ¹ö½º ÅØ½ºÃ³ »ı¼º (UI ¿µ¿ª Á¦¿Ü)
+	app_drawing_canvas_texture = SDL_CreateTexture(app_sdl_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WINDOW_WIDTH, WINDOW_HEIGHT - UI_AREA_HEIGHT);
+	if (!app_drawing_canvas_texture) { fprintf(stderr, "Äµ¹ö½º ÅØ½ºÃ³ »ı¼º ½ÇÆĞ: %s\n", SDL_GetError()); shutdown_sdl_environment(); main_program_should_run = 0; return; }
 
-    // ìº”ë²„ìŠ¤ ì´ˆê¸°í™” (í°ìƒ‰ìœ¼ë¡œ ì±„ì›€)
-    SDL_SetRenderTarget(app_sdl_renderer, app_drawing_canvas_texture);
-    SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // í°ìƒ‰
-    SDL_RenderClear(app_sdl_renderer);
-    SDL_SetRenderTarget(app_sdl_renderer, NULL); // ë‹¤ì‹œ ê¸°ë³¸ ë Œë” íƒ€ê²Ÿìœ¼ë¡œ ì„¤ì •
+	// Äµ¹ö½º ÃÊ±âÈ­ (Èò»öÀ¸·Î Ã¤¿ò)
+	SDL_SetRenderTarget(app_sdl_renderer, app_drawing_canvas_texture);
+	SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // Èò»ö
+	SDL_RenderClear(app_sdl_renderer);
+	SDL_SetRenderTarget(app_sdl_renderer, NULL); // ´Ù½Ã ±âº» ·»´õ Å¸°ÙÀ¸·Î ¼³Á¤
 
-    sdl_render_loop_running = 1; // SDL ë Œë”ë§ ë£¨í”„ ì‹¤í–‰ ìƒíƒœë¡œ ë³€ê²½
-    printf("[í´ë¼ì´ì–¸íŠ¸:SDL] UI ì´ˆê¸°í™” ì™„ë£Œ, ë£¨í”„ ì‹¤í–‰ ì¤€ë¹„ë¨ (sdl_render_loop_running = %d).\n", sdl_render_loop_running);
-    SDL_ShowWindow(app_sdl_window); // ìœˆë„ìš°ë¥¼ ë³´ì—¬ì¤Œ
-    SDL_RaiseWindow(app_sdl_window); // ìœˆë„ìš°ë¥¼ í¬ê·¸ë¼ìš´ë“œë¡œ ê°€ì ¸ì˜´
-    SDL_StartTextInput();            // í…ìŠ¤íŠ¸ ì…ë ¥ í™œì„±í™” (ì…ë ¥ì°½ í¬ì»¤ìŠ¤ ì‹œ ì‚¬ìš©)
+	sdl_render_loop_running = 1; // SDL ·»´õ¸µ ·çÇÁ ½ÇÇà »óÅÂ·Î º¯°æ
+	printf("[Å¬¶óÀÌ¾ğÆ®:SDL] UI ÃÊ±âÈ­ ¿Ï·á, ·çÇÁ ½ÇÇà ÁØºñµÊ (sdl_render_loop_running = %d).\n", sdl_render_loop_running);
+	SDL_ShowWindow(app_sdl_window); // À©µµ¿ì¸¦ º¸¿©ÁÜ
+	SDL_RaiseWindow(app_sdl_window); // À©µµ¿ì¸¦ Æ÷±×¶ó¿îµå·Î °¡Á®¿È
+	SDL_StartTextInput();            // ÅØ½ºÆ® ÀÔ·Â È°¼ºÈ­ (ÀÔ·ÂÃ¢ Æ÷Ä¿½º ½Ã »ç¿ë)
 }
 
-// --- SDL í™˜ê²½ ì¢…ë£Œ ---
+// --- SDL È¯°æ Á¾·á ---
 void shutdown_sdl_environment() {
-    // ì´ë¯¸ ì¢…ë£Œë˜ì—ˆê±°ë‚˜ ì´ˆê¸°í™”ë˜ì§€ ì•Šì•˜ë‹¤ë©´ ë°”ë¡œ ë¦¬í„´
-    if (!app_sdl_window && !app_sdl_renderer && !app_drawing_canvas_texture && !sdl_render_loop_running && !app_ui_font) {
-        return;
-    }
-    printf("[í´ë¼ì´ì–¸íŠ¸:SDL] UI ì¢…ë£Œ ì‹œì‘...\n");
-    if (app_drawing_canvas_texture) { SDL_DestroyTexture(app_drawing_canvas_texture); app_drawing_canvas_texture = NULL; }
-    if (app_sdl_renderer) { SDL_DestroyRenderer(app_sdl_renderer); app_sdl_renderer = NULL; }
-    if (app_sdl_window) { SDL_DestroyWindow(app_sdl_window); app_sdl_window = NULL; }
-    if (app_ui_font) { TTF_CloseFont(app_ui_font); app_ui_font = NULL; }
-    
-    SDL_StopTextInput(); // í…ìŠ¤íŠ¸ ì…ë ¥ ë¹„í™œì„±í™”
-    TTF_Quit(); // TTF ì¢…ë£Œ
-    SDL_Quit(); // SDL ì¢…ë£Œ
+	// ÀÌ¹Ì Á¾·áµÇ¾ú°Å³ª ÃÊ±âÈ­µÇÁö ¾Ê¾Ò´Ù¸é ¹Ù·Î ¸®ÅÏ
+	if (!app_sdl_window && !app_sdl_renderer && !app_drawing_canvas_texture && !sdl_render_loop_running && !app_ui_font) {
+		return;
+	}
+	printf("[Å¬¶óÀÌ¾ğÆ®:SDL] UI Á¾·á ½ÃÀÛ...\n");
+	if (app_drawing_canvas_texture) { SDL_DestroyTexture(app_drawing_canvas_texture); app_drawing_canvas_texture = NULL; }
+	if (app_sdl_renderer) { SDL_DestroyRenderer(app_sdl_renderer); app_sdl_renderer = NULL; }
+	if (app_sdl_window) { SDL_DestroyWindow(app_sdl_window); app_sdl_window = NULL; }
+	if (app_ui_font) { TTF_CloseFont(app_ui_font); app_ui_font = NULL; }
 
-    sdl_render_loop_running = 0;
-    sdl_should_be_active = 0;
-    printf("[í´ë¼ì´ì–¸íŠ¸:SDL] UI ìì› í•´ì œ ì™„ë£Œ (sdl_render_loop_running = %d, sdl_should_be_active = %d).\n", sdl_render_loop_running, sdl_should_be_active);
+	SDL_StopTextInput(); // ÅØ½ºÆ® ÀÔ·Â ºñÈ°¼ºÈ­
+	TTF_Quit(); // TTF Á¾·á
+	SDL_Quit(); // SDL Á¾·á
+
+	sdl_render_loop_running = 0;
+	sdl_should_be_active = 0;
+	printf("[Å¬¶óÀÌ¾ğÆ®:SDL] UI ÀÚ¿ø ÇØÁ¦ ¿Ï·á (sdl_render_loop_running = %d, sdl_should_be_active = %d).\n", sdl_render_loop_running, sdl_should_be_active);
 }
 
-// --- SDL UI ìš”ì†Œ ë Œë”ë§ ---
+// --- SDL UI ¿ä¼Ò ·»´õ¸µ ---
 void render_sdl_ui_elements() {
-    Uint32 now = SDL_GetTicks();
-    int seconds_passed = (now - round_start_tick) / 1000;
-    int seconds_left = round_duration_seconds - seconds_passed;
+	Uint32 now = SDL_GetTicks();
+	int seconds_passed = (now - round_start_tick) / 1000;
+	int seconds_left = round_duration_seconds - seconds_passed;
 
-    if (!app_sdl_renderer) return;
+	if (!app_sdl_renderer) return;
 
-    // UI ë°°ê²½
-    SDL_Rect ui_bg_rect = {0, 0, WINDOW_WIDTH, UI_AREA_HEIGHT};
-    SDL_SetRenderDrawColor(app_sdl_renderer, 220, 220, 220, 255);
-    SDL_RenderFillRect(app_sdl_renderer, &ui_bg_rect);
+	// UI ¹è°æ
+	SDL_Rect ui_bg_rect = { 0, 0, WINDOW_WIDTH, UI_AREA_HEIGHT };
+	SDL_SetRenderDrawColor(app_sdl_renderer, 220, 220, 220, 255);
+	SDL_RenderFillRect(app_sdl_renderer, &ui_bg_rect);
 
-    // ìƒ‰ìƒ íŒ”ë ˆíŠ¸ ë²„íŠ¼
-    for (int i = 0; i < 5; i++) {
-        SDL_Rect btn = {10 + i * 45, 10, 40, 30};
-        SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[i].r, sdl_colors[i].g, sdl_colors[i].b, 255);
-        SDL_RenderFillRect(app_sdl_renderer, &btn);
-        if (i == current_sdl_color_index) {
-            SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 0, 255);
-            SDL_RenderDrawRect(app_sdl_renderer, &btn);
-        }
-    }
+	// »ö»ó ÆÈ·¹Æ® ¹öÆ°
+	for (int i = 0; i < 5; i++) {
+		SDL_Rect btn = { 10 + i * 45, 10, 40, 30 };
+		SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[i].r, sdl_colors[i].g, sdl_colors[i].b, 255);
+		SDL_RenderFillRect(app_sdl_renderer, &btn);
+		if (i == current_sdl_color_index) {
+			SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 0, 255);
+			SDL_RenderDrawRect(app_sdl_renderer, &btn);
+		}
+	}
 
-    // íœ êµµê¸° ë²„íŠ¼
-    int pen_sizes_options[] = {3, 8, 15};
-    for (int i = 0; i < 3; i++) {
-        SDL_Rect btn = {10 + i * 45, 45, 40, 30};
-        SDL_SetRenderDrawColor(app_sdl_renderer, 180 - i * 10, 180 - i * 10, 180 - i * 10, 255);
-        SDL_RenderFillRect(app_sdl_renderer, &btn);
-        if (pen_sizes_options[i] == current_pen_size) {
-            SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 0, 255);
-            SDL_RenderDrawRect(app_sdl_renderer, &btn);
-        }
-    }
+	// Ææ ±½±â ¹öÆ°
+	int pen_sizes_options[] = { 3, 8, 15 };
+	for (int i = 0; i < 3; i++) {
+		SDL_Rect btn = { 10 + i * 45, 45, 40, 30 };
+		SDL_SetRenderDrawColor(app_sdl_renderer, 180 - i * 10, 180 - i * 10, 180 - i * 10, 255);
+		SDL_RenderFillRect(app_sdl_renderer, &btn);
+		if (pen_sizes_options[i] == current_pen_size) {
+			SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 0, 255);
+			SDL_RenderDrawRect(app_sdl_renderer, &btn);
+		}
+	}
 
-    // ì „ì²´ ì§€ìš°ê¸° ë²„íŠ¼
-    SDL_Rect clear_btn = {10 + 3 * 45, 45, 100, 30};
-    SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // í°ìƒ‰
-    SDL_RenderFillRect(app_sdl_renderer, &clear_btn);
-    SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 255); // ê²€ì •
-    SDL_RenderDrawRect(app_sdl_renderer, &clear_btn);
-    SDL_Color black = {0, 0, 0, 255};  // ê²€ì •ìƒ‰
-    draw_text(app_sdl_renderer, "All Clear", clear_btn.x + 10, clear_btn.y + 5, black);
+	// ÀüÃ¼ Áö¿ì±â ¹öÆ°
+	SDL_Rect clear_btn = { 10 + 3 * 45, 45, 100, 30 };
+	SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // Èò»ö
+	SDL_RenderFillRect(app_sdl_renderer, &clear_btn);
+	SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 255); // °ËÁ¤
+	SDL_RenderDrawRect(app_sdl_renderer, &clear_btn);
+	SDL_Color black = { 0, 0, 0, 255 };  // °ËÁ¤»ö
+	draw_text(app_sdl_renderer, "All Clear", clear_btn.x + 10, clear_btn.y + 5, black);
 
-    // ì œì¶œ ë²„íŠ¼
-    SDL_Rect submit_btn = {710, 10, 80, 30};
-    SDL_SetRenderDrawColor(app_sdl_renderer, 100, 200, 100, 255);
-    SDL_RenderFillRect(app_sdl_renderer, &submit_btn);
+	// Á¦Ãâ ¹öÆ°
+	SDL_Rect submit_btn = { 710, 10, 80, 30 };
+	SDL_SetRenderDrawColor(app_sdl_renderer, 100, 200, 100, 255);
+	SDL_RenderFillRect(app_sdl_renderer, &submit_btn);
 
-    if (app_ui_font) {
-        SDL_Color text_color = {0, 0, 0};
-        SDL_Surface* btn_text_surface = TTF_RenderUTF8_Blended(app_ui_font, "Submit", text_color);
-        if (btn_text_surface) {
-            SDL_Texture* btn_text_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, btn_text_surface);
-            SDL_Rect btn_text_rect = {
-                submit_btn.x + (submit_btn.w - btn_text_surface->w) / 2,
-                submit_btn.y + (submit_btn.h - btn_text_surface->h) / 2,
-                btn_text_surface->w,
-                btn_text_surface->h
-            };
-            SDL_RenderCopy(app_sdl_renderer, btn_text_texture, NULL, &btn_text_rect);
-            SDL_FreeSurface(btn_text_surface);
-            SDL_DestroyTexture(btn_text_texture);
-        }
-    }
+	if (app_ui_font) {
+		SDL_Color text_color = { 0, 0, 0 };
+		SDL_Surface* btn_text_surface = TTF_RenderUTF8_Blended(app_ui_font, "Submit", text_color);
+		if (btn_text_surface) {
+			SDL_Texture* btn_text_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, btn_text_surface);
+			SDL_Rect btn_text_rect = {
+				submit_btn.x + (submit_btn.w - btn_text_surface->w) / 2,
+				submit_btn.y + (submit_btn.h - btn_text_surface->h) / 2,
+				btn_text_surface->w,
+				btn_text_surface->h
+			};
+			SDL_RenderCopy(app_sdl_renderer, btn_text_texture, NULL, &btn_text_rect);
+			SDL_FreeSurface(btn_text_surface);
+			SDL_DestroyTexture(btn_text_texture);
+		}
+	}
 
-    // ì •ë‹µ ì…ë ¥ì°½
-    SDL_Rect answer_box = {400, 10, 300, 30};
-    SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255);
-    SDL_RenderFillRect(app_sdl_renderer, &answer_box);
+	// Á¤´ä ÀÔ·ÂÃ¢
+	SDL_Rect answer_box = { 400, 10, 300, 30 };
+	SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255);
+	SDL_RenderFillRect(app_sdl_renderer, &answer_box);
 
-    if (app_ui_font) {
-        SDL_Color text_color = {0, 0, 0};
-        char full_text_with_ime[BUFFER_SIZE * 2];
-        snprintf(full_text_with_ime, sizeof(full_text_with_ime), "%s%s", answer_input_buffer, ime_composition);
+	if (app_ui_font) {
+		SDL_Color text_color = { 0, 0, 0 };
+		char full_text_with_ime[BUFFER_SIZE * 2];
+		snprintf(full_text_with_ime, sizeof(full_text_with_ime), "%s%s", answer_input_buffer, ime_composition);
 
-        SDL_Surface* text_surface = TTF_RenderUTF8_Blended(app_ui_font, full_text_with_ime, text_color);
-        if (text_surface) {
-            SDL_Texture* text_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, text_surface);
-            SDL_Rect text_dest = {answer_box.x + 5, answer_box.y + 5, text_surface->w, text_surface->h};
-            SDL_RenderCopy(app_sdl_renderer, text_texture, NULL, &text_dest);
-            SDL_FreeSurface(text_surface);
-            SDL_DestroyTexture(text_texture);
-        }
+		SDL_Surface* text_surface = TTF_RenderUTF8_Blended(app_ui_font, full_text_with_ime, text_color);
+		if (text_surface) {
+			SDL_Texture* text_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, text_surface);
+			SDL_Rect text_dest = { answer_box.x + 5, answer_box.y + 5, text_surface->w, text_surface->h };
+			SDL_RenderCopy(app_sdl_renderer, text_texture, NULL, &text_dest);
+			SDL_FreeSurface(text_surface);
+			SDL_DestroyTexture(text_texture);
+		}
 
-        if (text_input_focused) {
-            SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 255, 255);
-            SDL_RenderDrawRect(app_sdl_renderer, &answer_box);
-        }
-    }
+		if (text_input_focused) {
+			SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 255, 255);
+			SDL_RenderDrawRect(app_sdl_renderer, &answer_box);
+		}
+	}
 
-    // ì •ë‹µ/ì˜¤ë‹µ ê²°ê³¼ í…ìŠ¤íŠ¸ ì¶œë ¥
-    if (strlen(sdl_answer_result_text) > 0 && SDL_GetTicks() - answer_result_display_tick < 3000) {
-        SDL_Color color = {0, 0, 0, 255};
-        if (strstr(sdl_answer_result_text, "O")) color = (SDL_Color){0, 160, 0, 255};
-        else if (strstr(sdl_answer_result_text, "X")) color = (SDL_Color){200, 0, 0, 255};
+	// Á¤´ä/¿À´ä °á°ú ÅØ½ºÆ® Ãâ·Â
+	if (strlen(sdl_answer_result_text) > 0 && SDL_GetTicks() - answer_result_display_tick < 3000) {
+		SDL_Color color = { 0, 0, 0, 255 };
+		if (strstr(sdl_answer_result_text, "O")) color = (SDL_Color){ 0, 160, 0, 255 };
+		else if (strstr(sdl_answer_result_text, "X")) color = (SDL_Color){ 200, 0, 0, 255 };
 
-        SDL_Surface* result_surface = TTF_RenderUTF8_Blended(app_ui_font, sdl_answer_result_text, color);
-        if (result_surface) {
-            SDL_Texture* result_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, result_surface);
-            SDL_Rect rect = {
-                (WINDOW_WIDTH - result_surface->w) / 2, 5, result_surface->w, result_surface->h
-            };
-            SDL_RenderCopy(app_sdl_renderer, result_texture, NULL, &rect);
-            SDL_FreeSurface(result_surface);
-            SDL_DestroyTexture(result_texture);
-        }
-    }
-    //íƒ€ì´ë¨¸ í‘œì‹œ
-    if (round_start_tick > 0 && round_duration_seconds > 0 && app_ui_font) {
-    Uint32 now = SDL_GetTicks();
-    int seconds_passed = (now - round_start_tick) / 1000;
-    int seconds_left = round_duration_seconds - seconds_passed;
-    if (seconds_left < 0) seconds_left = 0;
+		SDL_Surface* result_surface = TTF_RenderUTF8_Blended(app_ui_font, sdl_answer_result_text, color);
+		if (result_surface) {
+			SDL_Texture* result_texture = SDL_CreateTextureFromSurface(app_sdl_renderer, result_surface);
+			SDL_Rect rect = {
+				(WINDOW_WIDTH - result_surface->w) / 2, 5, result_surface->w, result_surface->h
+			};
+			SDL_RenderCopy(app_sdl_renderer, result_texture, NULL, &rect);
+			SDL_FreeSurface(result_surface);
+			SDL_DestroyTexture(result_texture);
+		}
+	}
+	//Å¸ÀÌ¸Ó Ç¥½Ã
+	if (round_start_tick > 0 && round_duration_seconds > 0 && app_ui_font) {
+		Uint32 now = SDL_GetTicks();
+		int seconds_passed = (now - round_start_tick) / 1000;
+		int seconds_left = round_duration_seconds - seconds_passed;
+		if (seconds_left < 0) seconds_left = 0;
 
-    char timer_text[64];
-    snprintf(timer_text, sizeof(timer_text), "TIMER : %dsec", seconds_left);
+		char timer_text[64];
+		snprintf(timer_text, sizeof(timer_text), "TIMER : %dsec", seconds_left);
 
-    SDL_Color text_color = {30, 144, 255, 255};  // íŒŒë€ìƒ‰
+		SDL_Color text_color = { 30, 144, 255, 255 };  // ÆÄ¶õ»ö
 
-    SDL_Surface* surface = TTF_RenderUTF8_Blended(app_ui_font, timer_text, text_color);
-    if (surface) {
-        SDL_Texture* texture = SDL_CreateTextureFromSurface(app_sdl_renderer, surface);
-        if (texture) {
-            int tex_w = surface->w;
-            int tex_h = surface->h;
+		SDL_Surface* surface = TTF_RenderUTF8_Blended(app_ui_font, timer_text, text_color);
+		if (surface) {
+			SDL_Texture* texture = SDL_CreateTextureFromSurface(app_sdl_renderer, surface);
+			if (texture) {
+				int tex_w = surface->w;
+				int tex_h = surface->h;
 
-            // ìˆ˜ì¹˜ë¡œ ìœ„ì¹˜ ì„¤ì • (ì¤‘ì•™ ìƒë‹¨)
-            int text_x = (WINDOW_WIDTH - tex_w) / 2;
-            int text_y = 45; // ë„ˆë¬´ ìœ„ì— ê°€ë©´ ë²„íŠ¼ì´ë‘ ê²¹ì¹˜ë‹ˆ ì•½ê°„ ë‚´ë¦¼
+				// ¼öÄ¡·Î À§Ä¡ ¼³Á¤ (Áß¾Ó »ó´Ü)
+				int text_x = (WINDOW_WIDTH - tex_w) / 2;
+				int text_y = 45; // ³Ê¹« À§¿¡ °¡¸é ¹öÆ°ÀÌ¶û °ãÄ¡´Ï ¾à°£ ³»¸²
 
-            // ë°˜íˆ¬ëª… ë°°ê²½ ì‚¬ê°í˜•
-            SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 160); // ê²€ì • ë°˜íˆ¬ëª…
-            SDL_SetRenderDrawBlendMode(app_sdl_renderer, SDL_BLENDMODE_BLEND);
-            SDL_Rect bg_rect = {text_x - 10, text_y - 5, tex_w + 20, tex_h + 10};
-            SDL_RenderFillRect(app_sdl_renderer, &bg_rect);
-            SDL_SetRenderDrawBlendMode(app_sdl_renderer, SDL_BLENDMODE_NONE);
+				// ¹İÅõ¸í ¹è°æ »ç°¢Çü
+				SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 160); // °ËÁ¤ ¹İÅõ¸í
+				SDL_SetRenderDrawBlendMode(app_sdl_renderer, SDL_BLENDMODE_BLEND);
+				SDL_Rect bg_rect = { text_x - 10, text_y - 5, tex_w + 20, tex_h + 10 };
+				SDL_RenderFillRect(app_sdl_renderer, &bg_rect);
+				SDL_SetRenderDrawBlendMode(app_sdl_renderer, SDL_BLENDMODE_NONE);
 
-            // í…ìŠ¤íŠ¸ ë Œë”ë§
-            SDL_Rect text_rect = {text_x, text_y, tex_w, tex_h};
-            SDL_RenderCopy(app_sdl_renderer, texture, NULL, &text_rect);
+				// ÅØ½ºÆ® ·»´õ¸µ
+				SDL_Rect text_rect = { text_x, text_y, tex_w, tex_h };
+				SDL_RenderCopy(app_sdl_renderer, texture, NULL, &text_rect);
 
-            SDL_DestroyTexture(texture);
-        }
-        SDL_FreeSurface(surface);
-    }
-} 
+				SDL_DestroyTexture(texture);
+			}
+			SDL_FreeSurface(surface);
+		}
+	}
 
 }
 
 
-// --- SDL UI ë§ˆìš°ìŠ¤ í´ë¦­ ì²˜ë¦¬ ---
+// --- SDL UI ¸¶¿ì½º Å¬¸¯ Ã³¸® ---
 void handle_sdl_mouse_click_on_ui(int x, int y) {
-    // ìƒ‰ìƒ ë²„íŠ¼ í´ë¦­ ì²˜ë¦¬
-    for (int i = 0; i < 5; i++) {
-        if (x >= 10 + i * 45 && x <= 10 + i * 45 + 40 && y >= 10 && y <= 10 + 30) {
-            current_sdl_color_index = i;
-            return;
-        }
-    }
-    // íœ í¬ê¸° ë²„íŠ¼ í´ë¦­ ì²˜ë¦¬
-    int pen_sizes_opt[] = {3, 8, 15};
-    for (int i = 0; i < 3; i++) {
-        if (x >= 10 + i * 45 && x <= 10 + i * 45 + 40 && y >= 45 && y <= 45 + 30) {
-            current_pen_size = pen_sizes_opt[i];
-            return;
-        }
-    }
-    // ì§€ìš°ê°œ/í´ë¦¬ì–´ ë²„íŠ¼ í´ë¦­ ì²˜ë¦¬
-    if (x >= 10 + 3 * 45 && x <= 10 + 3 * 45 + 100 && y >= 45 && y <= 45 + 30) {
-    if (!is_current_user_drawer) {
-        printf("[ì¶œì œì ì•„ë‹˜] ì „ì²´ ì§€ìš°ê¸° ë²„íŠ¼ì€ ì¶œì œìë§Œ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.\n");
-        return;
-    }
-    client_side_clear_canvas_and_notify_server();
-    return;
+	// »ö»ó ¹öÆ° Å¬¸¯ Ã³¸®
+	for (int i = 0; i < 5; i++) {
+		if (x >= 10 + i * 45 && x <= 10 + i * 45 + 40 && y >= 10 && y <= 10 + 30) {
+			current_sdl_color_index = i;
+			return;
+		}
+	}
+	// Ææ Å©±â ¹öÆ° Å¬¸¯ Ã³¸®
+	int pen_sizes_opt[] = { 3, 8, 15 };
+	for (int i = 0; i < 3; i++) {
+		if (x >= 10 + i * 45 && x <= 10 + i * 45 + 40 && y >= 45 && y <= 45 + 30) {
+			current_pen_size = pen_sizes_opt[i];
+			return;
+		}
+	}
+	// Áö¿ì°³/Å¬¸®¾î ¹öÆ° Å¬¸¯ Ã³¸®
+	if (x >= 10 + 3 * 45 && x <= 10 + 3 * 45 + 100 && y >= 45 && y <= 45 + 30) {
+		if (!is_current_user_drawer) {
+			printf("[ÃâÁ¦ÀÚ ¾Æ´Ô] ÀüÃ¼ Áö¿ì±â ¹öÆ°Àº ÃâÁ¦ÀÚ¸¸ »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.\n");
+			return;
+		}
+		client_side_clear_canvas_and_notify_server();
+		return;
+	}
+
+
+	// Á¤´ä ÀÔ·ÂÃ¢ Å¬¸¯ Ã³¸® 
+	SDL_Rect answer_box = { 400, 10, 300, 30 }; // ÀÔ·ÂÃ¢ À§Ä¡ Á¤ÀÇ
+
+	if (x >= answer_box.x && x <= answer_box.x + answer_box.w &&
+		y >= answer_box.y && y <= answer_box.y + answer_box.h) {
+		text_input_focused = 1;
+		SDL_StartTextInput();  // ÅØ½ºÆ® ÀÔ·Â È°¼ºÈ­
+		//printf("[µğ¹ö±ë] ÀÔ·ÂÃ¢ Æ÷Ä¿½º ON\n");
+	}
+	else {
+		text_input_focused = 0;
+		SDL_StopTextInput();   // ÅØ½ºÆ® ÀÔ·Â ºñÈ°¼ºÈ­
+	}
+	SDL_Rect submit_btn = { 710, 10, 80, 30 };
+	if (x >= 710 && x <= 710 + 80 && y >= 10 && y <= 10 + 30) {
+		if (answer_input_len > 0) {
+			send_formatted_message_to_server("MSG", answer_input_buffer);
+			answer_input_buffer[0] = '\0';
+			answer_input_len = 0;
+		}
+		return;
+	}
 }
 
-
-    // ì •ë‹µ ì…ë ¥ì°½ í´ë¦­ ì²˜ë¦¬ (ì¶”ê°€ë¨)
-    SDL_Rect answer_box = {400, 10, 300, 30}; // ì…ë ¥ì°½ ìœ„ì¹˜ ì •ì˜
-
-    if (x >= answer_box.x && x <= answer_box.x + answer_box.w &&
-        y >= answer_box.y && y <= answer_box.y + answer_box.h) {
-        text_input_focused = 1;
-        SDL_StartTextInput();  // í…ìŠ¤íŠ¸ ì…ë ¥ í™œì„±í™”
-        printf("[ë””ë²„ê¹…] ì…ë ¥ì°½ í¬ì»¤ìŠ¤ ON\n");
-    } else {
-        text_input_focused = 0;
-        SDL_StopTextInput();   // í…ìŠ¤íŠ¸ ì…ë ¥ ë¹„í™œì„±í™”
-        // printf("[ë””ë²„ê¹…] ì…ë ¥ì°½ í¬ì»¤ìŠ¤ OFF\n");
-    }
-    SDL_Rect submit_btn = {710, 10, 80, 30};
-    if (x >= 710 && x <= 710 + 80 && y >= 10 && y <= 10 + 30) {
-    	if (answer_input_len > 0) {
-        	send_formatted_message_to_server("MSG", answer_input_buffer);
-        	answer_input_buffer[0] = '\0';
-        	answer_input_len = 0;
-    	}
-    return;
-    }
-}
-
-// --- ìº”ë²„ìŠ¤ ì§€ìš°ê¸° ë° ì„œë²„ì— ì•Œë¦¼ ---
+// --- Äµ¹ö½º Áö¿ì±â ¹× ¼­¹ö¿¡ ¾Ë¸² ---
 void client_side_clear_canvas_and_notify_server() {
-    if (!app_drawing_canvas_texture || !app_sdl_renderer) return;
-    
-    // ë¡œì»¬ ë“œë¡œì‰ ëª…ë ¹ ë²„í¼ì— CLEAR ëª…ë ¹ ì¶”ê°€ (ì¦‰ì‹œ í™”ë©´ì— ë°˜ì˜ ìœ„í•¨)
-    ReceivedDrawData data = {0};
-    data.type = 2; // CLEAR
-    pthread_mutex_lock(&received_draw_commands_lock);
-    if (received_draw_commands_count >= received_draw_commands_capacity) {
-        received_draw_commands_capacity *= 2;
-        received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-        if (!received_draw_commands) { perror("realloc clear cmd failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; return;}
-    }
-    if(received_draw_commands) received_draw_commands[received_draw_commands_count++] = data;
-    pthread_mutex_unlock(&received_draw_commands_lock);
-    
-    send_formatted_message_to_server("DRAW_CLEAR", NULL); // ì„œë²„ì— ìº”ë²„ìŠ¤ ì§€ìš°ê¸° ëª…ë ¹ ì „ì†¡
+	if (!app_drawing_canvas_texture || !app_sdl_renderer) return;
+
+	// ·ÎÄÃ µå·ÎÀ× ¸í·É ¹öÆÛ¿¡ CLEAR ¸í·É Ãß°¡ (Áï½Ã È­¸é¿¡ ¹İ¿µ À§ÇÔ)
+	ReceivedDrawData data = { 0 };
+	data.type = 2; // CLEAR
+	pthread_mutex_lock(&received_draw_commands_lock);
+	if (received_draw_commands_count >= received_draw_commands_capacity) {
+		received_draw_commands_capacity *= 2;
+		received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+		if (!received_draw_commands) { perror("realloc clear cmd failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; return; }
+	}
+	if (received_draw_commands) received_draw_commands[received_draw_commands_count++] = data;
+	pthread_mutex_unlock(&received_draw_commands_lock);
+
+	send_formatted_message_to_server("DRAW_CLEAR", NULL); // ¼­¹ö¿¡ Äµ¹ö½º Áö¿ì±â ¸í·É Àü¼Û
 }
 
-// --- ë©”ì¸ í•¨ìˆ˜ ---
+// --- ¸ŞÀÎ ÇÔ¼ö ---
 int main(int argc, char* argv[]) {
-    // 1. ì†Œì¼“ ìƒì„± ë° ì„œë²„ ì—°ê²°
-    struct sockaddr_in server_address;
-    client_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (client_socket_fd < 0) { perror("socket"); exit(1); }
+	// 1. ¼ÒÄÏ »ı¼º ¹× ¼­¹ö ¿¬°á
+	struct sockaddr_in server_address;
+	client_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (client_socket_fd < 0) { perror("socket"); exit(1); }
 
-    memset(&server_address, 0, sizeof(server_address));
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(SERVER_PORT);
-    if (inet_pton(AF_INET, SERVER_IP, &server_address.sin_addr) <= 0) {
-        perror("inet_pton"); close(client_socket_fd); exit(1);
-    }
-    if (connect(client_socket_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
-        perror("connect"); close(client_socket_fd); exit(1);
-    }
-    printf("[í´ë¼ì´ì–¸íŠ¸:ë©”ì¸] ì„œë²„ ì—°ê²° ì„±ê³µ (IP: %s, Port: %d)\n", SERVER_IP, SERVER_PORT);
+	memset(&server_address, 0, sizeof(server_address));
+	server_address.sin_family = AF_INET;
+	server_address.sin_port = htons(SERVER_PORT);
+	if (inet_pton(AF_INET, SERVER_IP, &server_address.sin_addr) <= 0) {
+		perror("inet_pton"); close(client_socket_fd); exit(1);
+	}
+	if (connect(client_socket_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+		perror("connect"); close(client_socket_fd); exit(1);
+	}
+	printf("[Å¬¶óÀÌ¾ğÆ®:¸ŞÀÎ] ¼­¹ö ¿¬°á ¼º°ø (IP: %s, Port: %d)\n", SERVER_IP, SERVER_PORT);
 
-    // 2. ì„œë²„ ë©”ì‹œì§€ ìˆ˜ì‹  ìŠ¤ë ˆë“œ ìƒì„±
-    if (pthread_create(&server_message_receiver_tid, NULL, server_message_receiver_thread_func, NULL) != 0) {
-        perror("ìˆ˜ì‹  ìŠ¤ë ˆë“œ ìƒì„± ì‹¤íŒ¨"); close(client_socket_fd); exit(1);
-    }
+	// 2. ¼­¹ö ¸Ş½ÃÁö ¼ö½Å ½º·¹µå »ı¼º
+	if (pthread_create(&server_message_receiver_tid, NULL, server_message_receiver_thread_func, NULL) != 0) {
+		perror("¼ö½Å ½º·¹µå »ı¼º ½ÇÆĞ"); close(client_socket_fd); exit(1);
+	}
 
-    // 3. ë“œë¡œì‰ ëª…ë ¹ ë²„í¼ ë° ë®¤í…ìŠ¤ ì´ˆê¸°í™”
-    pthread_mutex_init(&received_draw_commands_lock, NULL);
-    received_draw_commands = malloc(received_draw_commands_capacity * sizeof(ReceivedDrawData));
-    if (received_draw_commands == NULL) {
-        perror("[í´ë¼ì´ì–¸íŠ¸:ë©”ì¸] received_draw_commands ë©”ëª¨ë¦¬ í• ë‹¹ ì‹¤íŒ¨");
-        exit(1);
-    }
+	// 3. µå·ÎÀ× ¸í·É ¹öÆÛ ¹× ¹ÂÅØ½º ÃÊ±âÈ­
+	pthread_mutex_init(&received_draw_commands_lock, NULL);
+	received_draw_commands = malloc(received_draw_commands_capacity * sizeof(ReceivedDrawData));
+	if (received_draw_commands == NULL) {
+		perror("[Å¬¶óÀÌ¾ğÆ®:¸ŞÀÎ] received_draw_commands ¸Ş¸ğ¸® ÇÒ´ç ½ÇÆĞ");
+		exit(1);
+	}
 
-    // 4. í„°ë¯¸ë„ ì…ë ¥ ë° SDL ì´ë²¤íŠ¸ ë£¨í”„
-    char terminal_input_line[BUFFER_SIZE];
-    printf("> "); fflush(stdout); // ì´ˆê¸° í”„ë¡¬í”„íŠ¸ ì¶œë ¥
-    
-    SDL_Event sdl_event_handler;
-    Uint32 sdl_frame_start_tick; // í”„ë ˆì„ ì‹œì‘ ì‹œê°„ ì¸¡ì •ìš©
+	// 4. ÅÍ¹Ì³Î ÀÔ·Â ¹× SDL ÀÌº¥Æ® ·çÇÁ
+	char terminal_input_line[BUFFER_SIZE];
+	printf("> "); fflush(stdout); // ÃÊ±â ÇÁ·ÒÇÁÆ® Ãâ·Â
 
-    while (main_program_should_run) {
-        // SDL UI í™œì„±í™” ì¡°ê±´: ë°©ì— ì…ì¥í–ˆê³ , ë‹‰ë„¤ì„ì´ ì„¤ì •ë˜ì—ˆê³ , SDL í™œì„±í™” í”Œë˜ê·¸ê°€ trueì¼ ë•Œ
-        if (app_current_state == STATE_IN_ROOM && client_is_nick_set && sdl_should_be_active) {
-            // SDL UIê°€ ì•„ì§ ì‹¤í–‰ ì¤‘ì´ ì•„ë‹ˆë©´ ì´ˆê¸°í™” ì‹œë„
-            if (!sdl_render_loop_running) {
-                initialize_sdl_environment();
-                if (!sdl_render_loop_running) { // ì´ˆê¸°í™” ì‹¤íŒ¨ ì‹œ
-                    printf("[í´ë¼ì´ì–¸íŠ¸:ë©”ì¸] SDL ì´ˆê¸°í™” ì‹¤íŒ¨. ë°©ì—ì„œ í‡´ì¥ ìš”ì²­.\n");
-                    sdl_should_be_active = 0; // SDL í™œì„±í™” ì¤‘ë‹¨
-                    if(app_current_state == STATE_IN_ROOM) {
-                        send_formatted_message_to_server("EXIT_ROOM", NULL); // ì„œë²„ì— ë°© í‡´ì¥ ì•Œë¦¼
-                    }
-                }
-            }
+	SDL_Event sdl_event_handler;
+	Uint32 sdl_frame_start_tick; // ÇÁ·¹ÀÓ ½ÃÀÛ ½Ã°£ ÃøÁ¤¿ë
 
-            // SDL ë Œë”ë§ ë£¨í”„ (UIê°€ í™œì„±í™”ëœ ê²½ìš°)
-            if (sdl_render_loop_running) {
-                sdl_frame_start_tick = SDL_GetTicks(); // í˜„ì¬ ì‹œê°„ ê¸°ë¡
+	while (main_program_should_run) {
+		// SDL UI È°¼ºÈ­ Á¶°Ç: ¹æ¿¡ ÀÔÀåÇß°í, ´Ğ³×ÀÓÀÌ ¼³Á¤µÇ¾ú°í, SDL È°¼ºÈ­ ÇÃ·¡±×°¡ trueÀÏ ¶§
+		if (app_current_state == STATE_IN_ROOM && client_is_nick_set && sdl_should_be_active) {
+			// SDL UI°¡ ¾ÆÁ÷ ½ÇÇà ÁßÀÌ ¾Æ´Ï¸é ÃÊ±âÈ­ ½Ãµµ
+			if (!sdl_render_loop_running) {
+				initialize_sdl_environment();
+				if (!sdl_render_loop_running) { // ÃÊ±âÈ­ ½ÇÆĞ ½Ã
+					printf("[Å¬¶óÀÌ¾ğÆ®:¸ŞÀÎ] SDL ÃÊ±âÈ­ ½ÇÆĞ. ¹æ¿¡¼­ ÅğÀå ¿äÃ».\n");
+					sdl_should_be_active = 0; // SDL È°¼ºÈ­ Áß´Ü
+					if (app_current_state == STATE_IN_ROOM) {
+						send_formatted_message_to_server("EXIT_ROOM", NULL); // ¼­¹ö¿¡ ¹æ ÅğÀå ¾Ë¸²
+					}
+				}
+			}
 
-                // SDL ì´ë²¤íŠ¸ ì²˜ë¦¬ ë£¨í”„
-                while (SDL_PollEvent(&sdl_event_handler)) {
-                    if (sdl_event_handler.type == SDL_QUIT) { // ì°½ ë‹«ê¸° ë²„íŠ¼ í´ë¦­
-                        printf("[í´ë¼ì´ì–¸íŠ¸:SDLì´ë²¤íŠ¸] ì¢…ë£Œ ì´ë²¤íŠ¸ (X ë²„íŠ¼). EXIT_ROOM ì „ì†¡.\n");
-                        send_formatted_message_to_server("EXIT_ROOM", NULL); // ì„œë²„ì— ë°© í‡´ì¥ ì•Œë¦¼
-                        // sdl_should_be_active = 0; // ì„œë²„ ì‘ë‹µì„ ê¸°ë‹¤ë ¤ ìƒíƒœ ë³€ê²½í•˜ë¯€ë¡œ ì£¼ì„ ì²˜ë¦¬
-                        break; // ì´ë²¤íŠ¸ ë£¨í”„ ì¢…ë£Œ
-                    }
-              
-                    //  í…ìŠ¤íŠ¸ ì…ë ¥ ì²˜ë¦¬ (ì¶”ê°€ë¨)
-                    if (sdl_event_handler.type == SDL_TEXTINPUT && text_input_focused) {
-                        int len = strlen(sdl_event_handler.text.text);
-                        if (answer_input_len + len < BUFFER_SIZE - 1) { // ë²„í¼ ì˜¤ë²„í”Œë¡œìš° ë°©ì§€
-                            strcat(answer_input_buffer, sdl_event_handler.text.text);
-                            answer_input_len += len;
-                            // printf("[ë””ë²„ê¹…] ì…ë ¥ëœ ê¸€ì: %s, í˜„ì¬ ë²„í¼: %s\n", sdl_event_handler.text.text, answer_input_buffer);
-                        }
-                    } else if (sdl_event_handler.type == SDL_TEXTEDITING && text_input_focused) {
-    strncpy(ime_composition, sdl_event_handler.edit.text, sizeof(ime_composition) - 1);
-    ime_composition[sizeof(ime_composition) - 1] = '\0';
-		    } else if (sdl_event_handler.type == SDL_KEYDOWN) {
-    if (sdl_event_handler.key.keysym.sym == SDLK_RETURN && text_input_focused) {
-        if (answer_input_len > 0) {
-            if (!is_current_user_drawer) {
-                send_formatted_message_to_server("MSG", answer_input_buffer); // ì„œë²„ë¡œ ì •ë‹µ ë©”ì‹œì§€ ì „ì†¡
-                printf("[ë””ë²„ê¹…] ì •ë‹µ ë©”ì‹œì§€ ì „ì†¡ë¨: %s\n", answer_input_buffer);
-            } else {
-                printf("[ì¶œì œì ì°¨ë‹¨] ì¶œì œìëŠ” ì •ë‹µì„ ì…ë ¥í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤: %s\n", answer_input_buffer);
-            }
-            answer_input_buffer[0] = '\0';
-            answer_input_len = 0;
-        }
-    } else if (sdl_event_handler.key.keysym.sym == SDLK_BACKSPACE && text_input_focused) {
-        if (answer_input_len > 0) {
-            answer_input_buffer[--answer_input_len] = '\0';
-        }
-    }
-}
-if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN) {
-    int x = sdl_event_handler.button.x;
-    int y = sdl_event_handler.button.y;
+			// SDL ·»´õ¸µ ·çÇÁ (UI°¡ È°¼ºÈ­µÈ °æ¿ì)
+			if (sdl_render_loop_running) {
+				sdl_frame_start_tick = SDL_GetTicks(); // ÇöÀç ½Ã°£ ±â·Ï
 
-    if (!is_current_user_drawer) {
-        // ì°¸ì—¬ìëŠ” ì…ë ¥ì°½ í´ë¦­ë§Œ ê°€ëŠ¥
-        if (x >= 400 && x <= 700 && y >= 10 && y <= 40) {
-            text_input_focused = 1;
-            SDL_StartTextInput();
-        } else {
-            text_input_focused = 0;
-            SDL_StopTextInput();
-        }
+				// SDL ÀÌº¥Æ® Ã³¸® ·çÇÁ
+				while (SDL_PollEvent(&sdl_event_handler)) {
+					if (sdl_event_handler.type == SDL_QUIT) { // Ã¢ ´İ±â ¹öÆ° Å¬¸¯
+						printf("[Å¬¶óÀÌ¾ğÆ®:SDLÀÌº¥Æ®] Á¾·á ÀÌº¥Æ® (X ¹öÆ°). EXIT_ROOM Àü¼Û.\n");
+						send_formatted_message_to_server("EXIT_ROOM", NULL); // ¼­¹ö¿¡ ¹æ ÅğÀå ¾Ë¸²
+						// sdl_should_be_active = 0; // ¼­¹ö ÀÀ´äÀ» ±â´Ù·Á »óÅÂ º¯°æÇÏ¹Ç·Î ÁÖ¼® Ã³¸®
+						break; // ÀÌº¥Æ® ·çÇÁ Á¾·á
+					}
 
-        // ì°¸ì—¬ìëŠ” ê·¸ë¦¼ ê·¸ë¦¬ê¸° ë¶ˆê°€ â†’ return ì—†ìŒ, ê·¸ëƒ¥ ì•„ë¬´ ì²˜ë¦¬ë„ ì•ˆí•¨
-    } else {
-        // ì¶œì œìëŠ” ì…ë ¥ì°½ ë¹„í™œì„±í™”
-        text_input_focused = 0;
-        SDL_StopTextInput();
+					//  ÅØ½ºÆ® ÀÔ·Â Ã³¸® (Ãß°¡µÊ)
+					if (sdl_event_handler.type == SDL_TEXTINPUT && text_input_focused) {
+						int len = strlen(sdl_event_handler.text.text);
+						if (answer_input_len + len < BUFFER_SIZE - 1) { // ¹öÆÛ ¿À¹öÇÃ·Î¿ì ¹æÁö
+							strcat(answer_input_buffer, sdl_event_handler.text.text);
+							answer_input_len += len;
+							// printf("[µğ¹ö±ë] ÀÔ·ÂµÈ ±ÛÀÚ: %s, ÇöÀç ¹öÆÛ: %s\n", sdl_event_handler.text.text, answer_input_buffer);
+						}
+					}
+					else if (sdl_event_handler.type == SDL_TEXTEDITING && text_input_focused) {
+						strncpy(ime_composition, sdl_event_handler.edit.text, sizeof(ime_composition) - 1);
+						ime_composition[sizeof(ime_composition) - 1] = '\0';
+					}
+					else if (sdl_event_handler.type == SDL_KEYDOWN) {
+						if (sdl_event_handler.key.keysym.sym == SDLK_RETURN && text_input_focused) {
+							if (answer_input_len > 0) {
+								if (!is_current_user_drawer) {
+									send_formatted_message_to_server("MSG", answer_input_buffer); // ¼­¹ö·Î Á¤´ä ¸Ş½ÃÁö Àü¼Û
+									//printf("[µğ¹ö±ë] Á¤´ä ¸Ş½ÃÁö Àü¼ÛµÊ: %s\n", answer_input_buffer);
+								}
+								else {
+									printf("[ÃâÁ¦ÀÚ Â÷´Ü] ÃâÁ¦ÀÚ´Â Á¤´äÀ» ÀÔ·ÂÇÒ ¼ö ¾ø½À´Ï´Ù: %s\n", answer_input_buffer);
+								}
+								answer_input_buffer[0] = '\0';
+								answer_input_len = 0;
+							}
+						}
+						else if (sdl_event_handler.key.keysym.sym == SDLK_BACKSPACE && text_input_focused) {
+							if (answer_input_len > 0) {
+								answer_input_buffer[--answer_input_len] = '\0';
+							}
+						}
+					}
+					if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN) {
+						int x = sdl_event_handler.button.x;
+						int y = sdl_event_handler.button.y;
 
-        // ì—¬ê¸°ì— ê·¸ë¦¼ ê·¸ë¦¬ê¸° ë¡œì§ ì‘ì„±
-        // drawing = 1;
-        // draw_start_x = x; draw_start_y = y; ë“±
-    }
-}
-                    // ë§ˆìš°ìŠ¤ ëª¨ì…˜ ì´ë²¤íŠ¸ (ë“œë˜ê·¸ ì¤‘)
-                    else if (sdl_event_handler.type == SDL_MOUSEMOTION && local_mouse_is_drawing) {
-                        int m_x = sdl_event_handler.motion.x;
-                        int m_y = sdl_event_handler.motion.y;
-                        if (m_y >= UI_AREA_HEIGHT) { // ê·¸ë¦¼íŒ ì˜ì—­ ë‚´ì—ì„œë§Œ ê·¸ë¦¬ê¸°
-                            // ì„  ê·¸ë¦¬ê¸° ëª…ë ¹ ì„œë²„ë¡œ ì „ì†¡
-                            char line_payload[BUFFER_SIZE];
-                            snprintf(line_payload, BUFFER_SIZE, "%d,%d,%d,%d,%d,%d", local_mouse_last_x, local_mouse_last_y, m_x, m_y, current_sdl_color_index, current_pen_size);
-                            send_formatted_message_to_server("DRAW_LINE", line_payload);
-                            
-                            // ë¡œì»¬ ë“œë¡œì‰ ëª…ë ¹ ë²„í¼ì—ë„ ì¶”ê°€í•˜ì—¬ ì¦‰ì‹œ ë°˜ì˜
-                            ReceivedDrawData data = {0}; data.type = 1; data.x1 = local_mouse_last_x; data.y1 = local_mouse_last_y;
-                            data.x2 = m_x; data.y2 = m_y; data.color_index = current_sdl_color_index; data.size = current_pen_size;
-                            pthread_mutex_lock(&received_draw_commands_lock);
-                            if (received_draw_commands_count >= received_draw_commands_capacity) {
-                                received_draw_commands_capacity *= 2;
-                                received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-                                if (!received_draw_commands) { perror("realloc draw line cmd failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break;}
-                            }
-                            if(received_draw_commands) received_draw_commands[received_draw_commands_count++] = data;
-                            pthread_mutex_unlock(&received_draw_commands_lock);
+						if (!is_current_user_drawer) {
+							// Âü¿©ÀÚ´Â ÀÔ·ÂÃ¢ Å¬¸¯¸¸ °¡´É
+							if (x >= 400 && x <= 700 && y >= 10 && y <= 40) {
+								text_input_focused = 1;
+								SDL_StartTextInput();
+							}
+							else {
+								text_input_focused = 0;
+								SDL_StopTextInput();
+							}
 
-                            local_mouse_last_x = m_x; local_mouse_last_y = m_y; // ë§ˆì§€ë§‰ ìœ„ì¹˜ ì—…ë°ì´íŠ¸
-                        }
-                    }
-                    // ë§ˆìš°ìŠ¤ ë²„íŠ¼ ì—… ì´ë²¤íŠ¸ (ê·¸ë¦¬ê¸° ì¢…ë£Œ)
-                    else if (sdl_event_handler.type == SDL_MOUSEBUTTONUP && sdl_event_handler.button.button == SDL_BUTTON_LEFT) {
-                        local_mouse_is_drawing = 0;
-                        local_mouse_last_x = -1;
-                        local_mouse_last_y = -1;
-                    }
-                // ë§ˆìš°ìŠ¤ ë²„íŠ¼ ë‹¤ìš´ ì´ë²¤íŠ¸ (í´ë¦­)
-                    if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN && sdl_event_handler.button.button == SDL_BUTTON_LEFT) {
-                        int m_x = sdl_event_handler.button.x;
-                        int m_y = sdl_event_handler.button.y;
-                        if (m_y < UI_AREA_HEIGHT) { // UI ì˜ì—­ í´ë¦­
-                            handle_sdl_mouse_click_on_ui(m_x, m_y);
-                        } else {
-    if (is_current_user_drawer) {
-        // ê·¸ë¦¼íŒ í´ë¦­ (ì¶œì œìë§Œ ê°€ëŠ¥)
-        local_mouse_is_drawing = 1;
-        local_mouse_last_x = m_x;
-        local_mouse_last_y = m_y;
+							// Âü¿©ÀÚ´Â ±×¸² ±×¸®±â ºÒ°¡ ¡æ return ¾øÀ½, ±×³É ¾Æ¹« Ã³¸®µµ ¾ÈÇÔ
+						}
+						else {
+							// ÃâÁ¦ÀÚ´Â ÀÔ·ÂÃ¢ ºñÈ°¼ºÈ­
+							text_input_focused = 0;
+							SDL_StopTextInput();
+						}
+					}
+					// ¸¶¿ì½º ¸ğ¼Ç ÀÌº¥Æ® (µå·¡±× Áß)
+					else if (sdl_event_handler.type == SDL_MOUSEMOTION && local_mouse_is_drawing) {
+						int m_x = sdl_event_handler.motion.x;
+						int m_y = sdl_event_handler.motion.y;
+						if (m_y >= UI_AREA_HEIGHT) { // ±×¸²ÆÇ ¿µ¿ª ³»¿¡¼­¸¸ ±×¸®±â
+							// ¼± ±×¸®±â ¸í·É ¼­¹ö·Î Àü¼Û
+							char line_payload[BUFFER_SIZE];
+							snprintf(line_payload, BUFFER_SIZE, "%d,%d,%d,%d,%d,%d", local_mouse_last_x, local_mouse_last_y, m_x, m_y, current_sdl_color_index, current_pen_size);
+							send_formatted_message_to_server("DRAW_LINE", line_payload);
 
-        // ì  ê·¸ë¦¬ê¸° ëª…ë ¹ ì„œë²„ë¡œ ì „ì†¡
-        char point_payload[BUFFER_SIZE];
-        snprintf(point_payload, BUFFER_SIZE, "%d,%d,%d,%d", m_x, m_y, current_sdl_color_index, current_pen_size);
-        send_formatted_message_to_server("DRAW_POINT", point_payload);
+							// ·ÎÄÃ µå·ÎÀ× ¸í·É ¹öÆÛ¿¡µµ Ãß°¡ÇÏ¿© Áï½Ã ¹İ¿µ
+							ReceivedDrawData data = { 0 }; data.type = 1; data.x1 = local_mouse_last_x; data.y1 = local_mouse_last_y;
+							data.x2 = m_x; data.y2 = m_y; data.color_index = current_sdl_color_index; data.size = current_pen_size;
+							pthread_mutex_lock(&received_draw_commands_lock);
+							if (received_draw_commands_count >= received_draw_commands_capacity) {
+								received_draw_commands_capacity *= 2;
+								received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+								if (!received_draw_commands) { perror("realloc draw line cmd failed"); pthread_mutex_unlock(&received_draw_commands_lock); main_program_should_run = 0; break; }
+							}
+							if (received_draw_commands) received_draw_commands[received_draw_commands_count++] = data;
+							pthread_mutex_unlock(&received_draw_commands_lock);
 
-        // ë¡œì»¬ ë“œë¡œì‰ ëª…ë ¹ ë²„í¼ì—ë„ ì¶”ê°€í•˜ì—¬ ì¦‰ì‹œ ë°˜ì˜
-        ReceivedDrawData data = {0}; data.type = 0; data.x1 = m_x; data.y1 = m_y;
-        data.color_index = current_sdl_color_index; data.size = current_pen_size;
-        pthread_mutex_lock(&received_draw_commands_lock);
-        if (received_draw_commands_count >= received_draw_commands_capacity) {
-            received_draw_commands_capacity *= 2;
-            received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
-            if (!received_draw_commands) {
-                perror("realloc draw point cmd failed");
-                pthread_mutex_unlock(&received_draw_commands_lock);
-                main_program_should_run = 0;
-                break;
-            }
-        }
-        if (received_draw_commands)
-            received_draw_commands[received_draw_commands_count++] = data;
-        pthread_mutex_unlock(&received_draw_commands_lock);
-    } else {
-        printf("[ì°¨ë‹¨] ì¶œì œìê°€ ì•„ë‹ˆë¯€ë¡œ ê·¸ë¦¼ì„ ê·¸ë¦´ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.\n");
-    }
-}
+							local_mouse_last_x = m_x; local_mouse_last_y = m_y; // ¸¶Áö¸· À§Ä¡ ¾÷µ¥ÀÌÆ®
+						}
+					}
+					// ¸¶¿ì½º ¹öÆ° ¾÷ ÀÌº¥Æ® (±×¸®±â Á¾·á)
+					else if (sdl_event_handler.type == SDL_MOUSEBUTTONUP && sdl_event_handler.button.button == SDL_BUTTON_LEFT) {
+						local_mouse_is_drawing = 0;
+						local_mouse_last_x = -1;
+						local_mouse_last_y = -1;
+					}
+					// ¸¶¿ì½º ¹öÆ° ´Ù¿î ÀÌº¥Æ® (Å¬¸¯)
+					if (sdl_event_handler.type == SDL_MOUSEBUTTONDOWN && sdl_event_handler.button.button == SDL_BUTTON_LEFT) {
+						int m_x = sdl_event_handler.button.x;
+						int m_y = sdl_event_handler.button.y;
+						if (m_y < UI_AREA_HEIGHT) { // UI ¿µ¿ª Å¬¸¯
+							handle_sdl_mouse_click_on_ui(m_x, m_y);
+						}
+						else {
+							if (is_current_user_drawer) {
+								// ±×¸²ÆÇ Å¬¸¯ (ÃâÁ¦ÀÚ¸¸ °¡´É)
+								local_mouse_is_drawing = 1;
+								local_mouse_last_x = m_x;
+								local_mouse_last_y = m_y;
 
-                    }
-                } // end of SDL_PollEvent loop
+								// Á¡ ±×¸®±â ¸í·É ¼­¹ö·Î Àü¼Û
+								char point_payload[BUFFER_SIZE];
+								snprintf(point_payload, BUFFER_SIZE, "%d,%d,%d,%d", m_x, m_y, current_sdl_color_index, current_pen_size);
+								send_formatted_message_to_server("DRAW_POINT", point_payload);
 
-                // --- ë“œë¡œì‰ ëª…ë ¹ ì ìš© (received_draw_commands í ì²˜ë¦¬) ---
-                pthread_mutex_lock(&received_draw_commands_lock);
-                if (received_draw_commands_count > 0) {
-                    SDL_SetRenderTarget(app_sdl_renderer, app_drawing_canvas_texture); // ìº”ë²„ìŠ¤ í…ìŠ¤ì²˜ì— ê·¸ë¦¼
-                    for (int i = 0; i < received_draw_commands_count; i++) {
-                        ReceivedDrawData cmd = received_draw_commands[i];
-                        if (cmd.type == 0) { // POINT
-                            SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[cmd.color_index].r, sdl_colors[cmd.color_index].g, sdl_colors[cmd.color_index].b, 255);
-                            // UI_AREA_HEIGHT ë§Œí¼ ìœ„ë¡œ ì¡°ì •í•˜ì—¬ ê·¸ë¦¼íŒ ì˜ì—­ì— ë§ê²Œ ê·¸ë¦¬ê¸°
-                            SDL_Rect pr = {cmd.x1 - cmd.size/2, (cmd.y1 - UI_AREA_HEIGHT) - cmd.size/2, cmd.size, cmd.size};
-                            SDL_RenderFillRect(app_sdl_renderer, &pr);
-                        } else if (cmd.type == 1) { // LINE
-                            SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[cmd.color_index].r, sdl_colors[cmd.color_index].g, sdl_colors[cmd.color_index].b, 255);
-                            // íœ ë‘ê»˜ë¥¼ ìœ„í•´ ì—¬ëŸ¬ ê°œì˜ ì„ ì„ ê·¸ë¦¼ (ì›í˜• íš¨ê³¼)
-                            for (int dx = -cmd.size/2; dx <= cmd.size/2; ++dx) {
-                                for (int dy = -cmd.size/2; dy <= cmd.size/2; ++dy) {
-                                    // ì›í˜• ëª¨ì–‘ì˜ íœì„ ìœ„í•œ ê·¼ì‚¬ì¹˜ ê³„ì‚°
-                                    if(dx*dx + dy*dy <= (cmd.size/2)*(cmd.size/2) +1 ){
-                                        // UI_AREA_HEIGHT ë§Œí¼ ìœ„ë¡œ ì¡°ì •
-                                        SDL_RenderDrawLine(app_sdl_renderer, cmd.x1 + dx, (cmd.y1 - UI_AREA_HEIGHT) + dy, cmd.x2 + dx, (cmd.y2 - UI_AREA_HEIGHT) + dy);
-                                    }
-                                }
-                            }
-                        } else if (cmd.type == 2) { // CLEAR
-                            SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // í°ìƒ‰ìœ¼ë¡œ ì§€ì›€
-                            SDL_RenderClear(app_sdl_renderer);
-                        }
-                    }
-                    received_draw_commands_count = 0; // ì²˜ë¦¬ ì™„ë£Œëœ ëª…ë ¹ ì´ˆê¸°í™”
-                    SDL_SetRenderTarget(app_sdl_renderer, NULL); // ë‹¤ì‹œ ê¸°ë³¸ ë Œë” íƒ€ê²Ÿìœ¼ë¡œ ì„¤ì •
-                }
-                pthread_mutex_unlock(&received_draw_commands_lock);
+								// ·ÎÄÃ µå·ÎÀ× ¸í·É ¹öÆÛ¿¡µµ Ãß°¡ÇÏ¿© Áï½Ã ¹İ¿µ
+								ReceivedDrawData data = { 0 }; data.type = 0; data.x1 = m_x; data.y1 = m_y;
+								data.color_index = current_sdl_color_index; data.size = current_pen_size;
+								pthread_mutex_lock(&received_draw_commands_lock);
+								if (received_draw_commands_count >= received_draw_commands_capacity) {
+									received_draw_commands_capacity *= 2;
+									received_draw_commands = realloc(received_draw_commands, received_draw_commands_capacity * sizeof(ReceivedDrawData));
+									if (!received_draw_commands) {
+										perror("realloc draw point cmd failed");
+										pthread_mutex_unlock(&received_draw_commands_lock);
+										main_program_should_run = 0;
+										break;
+									}
+								}
+								if (received_draw_commands)
+									received_draw_commands[received_draw_commands_count++] = data;
+								pthread_mutex_unlock(&received_draw_commands_lock);
+							}
+							else {
+								printf("[Â÷´Ü] ÃâÁ¦ÀÚ°¡ ¾Æ´Ï¹Ç·Î ±×¸²À» ±×¸± ¼ö ¾ø½À´Ï´Ù.\n");
+							}
+						}
 
-                // --- í™”ë©´ ë Œë”ë§ ---
-                SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 255); // ê²€ì •ìƒ‰ìœ¼ë¡œ ë°°ê²½ ì´ˆê¸°í™”
-                SDL_RenderClear(app_sdl_renderer);
+					}
+				} // end of SDL_PollEvent loop
 
-                // ìº”ë²„ìŠ¤ í…ìŠ¤ì²˜ë¥¼ í™”ë©´ì— ê·¸ë¦¬ê¸°
-                SDL_Rect canvas_dest_rect = {0, UI_AREA_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT - UI_AREA_HEIGHT};
-                SDL_RenderCopy(app_sdl_renderer, app_drawing_canvas_texture, NULL, &canvas_dest_rect);
-                
-                render_sdl_ui_elements(); // UI ìš”ì†Œ ê·¸ë¦¬ê¸°
+				// --- µå·ÎÀ× ¸í·É Àû¿ë (received_draw_commands Å¥ Ã³¸®) ---
+				pthread_mutex_lock(&received_draw_commands_lock);
+				if (received_draw_commands_count > 0) {
+					SDL_SetRenderTarget(app_sdl_renderer, app_drawing_canvas_texture); // Äµ¹ö½º ÅØ½ºÃ³¿¡ ±×¸²
+					for (int i = 0; i < received_draw_commands_count; i++) {
+						ReceivedDrawData cmd = received_draw_commands[i];
+						if (cmd.type == 0) { // POINT
+							SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[cmd.color_index].r, sdl_colors[cmd.color_index].g, sdl_colors[cmd.color_index].b, 255);
+							// UI_AREA_HEIGHT ¸¸Å­ À§·Î Á¶Á¤ÇÏ¿© ±×¸²ÆÇ ¿µ¿ª¿¡ ¸Â°Ô ±×¸®±â
+							SDL_Rect pr = { cmd.x1 - cmd.size / 2, (cmd.y1 - UI_AREA_HEIGHT) - cmd.size / 2, cmd.size, cmd.size };
+							SDL_RenderFillRect(app_sdl_renderer, &pr);
+						}
+						else if (cmd.type == 1) { // LINE
+							SDL_SetRenderDrawColor(app_sdl_renderer, sdl_colors[cmd.color_index].r, sdl_colors[cmd.color_index].g, sdl_colors[cmd.color_index].b, 255);
+							// Ææ µÎ²²¸¦ À§ÇØ ¿©·¯ °³ÀÇ ¼±À» ±×¸² (¿øÇü È¿°ú)
+							for (int dx = -cmd.size / 2; dx <= cmd.size / 2; ++dx) {
+								for (int dy = -cmd.size / 2; dy <= cmd.size / 2; ++dy) {
+									// ¿øÇü ¸ğ¾çÀÇ ÆæÀ» À§ÇÑ ±Ù»çÄ¡ °è»ê
+									if (dx * dx + dy * dy <= (cmd.size / 2) * (cmd.size / 2) + 1) {
+										// UI_AREA_HEIGHT ¸¸Å­ À§·Î Á¶Á¤
+										SDL_RenderDrawLine(app_sdl_renderer, cmd.x1 + dx, (cmd.y1 - UI_AREA_HEIGHT) + dy, cmd.x2 + dx, (cmd.y2 - UI_AREA_HEIGHT) + dy);
+									}
+								}
+							}
+						}
+						else if (cmd.type == 2) { // CLEAR
+							SDL_SetRenderDrawColor(app_sdl_renderer, 255, 255, 255, 255); // Èò»öÀ¸·Î Áö¿ò
+							SDL_RenderClear(app_sdl_renderer);
+						}
+					}
+					received_draw_commands_count = 0; // Ã³¸® ¿Ï·áµÈ ¸í·É ÃÊ±âÈ­
+					SDL_SetRenderTarget(app_sdl_renderer, NULL); // ´Ù½Ã ±âº» ·»´õ Å¸°ÙÀ¸·Î ¼³Á¤
+				}
+				pthread_mutex_unlock(&received_draw_commands_lock);
 
-                SDL_RenderPresent(app_sdl_renderer); // í™”ë©´ ì—…ë°ì´íŠ¸
+				// --- È­¸é ·»´õ¸µ ---
+				SDL_SetRenderDrawColor(app_sdl_renderer, 0, 0, 0, 255); // °ËÁ¤»öÀ¸·Î ¹è°æ ÃÊ±âÈ­
+				SDL_RenderClear(app_sdl_renderer);
 
-                // í”„ë ˆì„ ë ˆì´íŠ¸ ì¡°ì ˆ (60 FPS)
-                Uint32 frame_time = SDL_GetTicks() - sdl_frame_start_tick;
-                if (frame_time < 1000 / 60) {
-                    SDL_Delay((1000 / 60) - frame_time);
-                }
-            } // end of if (sdl_render_loop_running)
-        } else {
-            // SDL UIê°€ ë¹„í™œì„±í™”ëœ ê²½ìš° (ë¡œë¹„ ìƒíƒœ ë“±) í„°ë¯¸ë„ ì…ë ¥ ì²˜ë¦¬
-            // non-blockingí•˜ê²Œ í„°ë¯¸ë„ ì…ë ¥ í™•ì¸
-            fd_set read_fds;
-            struct timeval tv;
+				// Äµ¹ö½º ÅØ½ºÃ³¸¦ È­¸é¿¡ ±×¸®±â
+				SDL_Rect canvas_dest_rect = { 0, UI_AREA_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT - UI_AREA_HEIGHT };
+				SDL_RenderCopy(app_sdl_renderer, app_drawing_canvas_texture, NULL, &canvas_dest_rect);
 
-            FD_ZERO(&read_fds);
-            FD_SET(STDIN_FILENO, &read_fds); // í‘œì¤€ ì…ë ¥ ê°ì§€
+				render_sdl_ui_elements(); // UI ¿ä¼Ò ±×¸®±â
 
-            // ì§§ì€ ì‹œê°„ë§Œ ëŒ€ê¸°í•˜ì—¬ CPU ì ìœ ìœ¨ì„ ë„ˆë¬´ ë†’ì´ì§€ ì•ŠìŒ
-            tv.tv_sec = 0;
-            tv.tv_usec = 10000; // 10ms
+				SDL_RenderPresent(app_sdl_renderer); // È­¸é ¾÷µ¥ÀÌÆ®
 
-            int select_result = select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &tv);
+				// ÇÁ·¹ÀÓ ·¹ÀÌÆ® Á¶Àı (60 FPS)
+				Uint32 frame_time = SDL_GetTicks() - sdl_frame_start_tick;
+				if (frame_time < 1000 / 60) {
+					SDL_Delay((1000 / 60) - frame_time);
+				}
+			} // end of if (sdl_render_loop_running)
+		}
+		else {
+			// SDL UI°¡ ºñÈ°¼ºÈ­µÈ °æ¿ì (·Îºñ »óÅÂ µî) ÅÍ¹Ì³Î ÀÔ·Â Ã³¸®
+			// non-blockingÇÏ°Ô ÅÍ¹Ì³Î ÀÔ·Â È®ÀÎ
+			fd_set read_fds;
+			struct timeval tv;
 
-            if (select_result < 0) {
-                if (errno == EINTR) continue; // ì¸í„°ëŸ½íŠ¸ ëœ ê²½ìš° ì¬ì‹œë„
-                perror("select error");
-                main_program_should_run = 0;
-                break;
-            } else if (select_result > 0) {
-                if (FD_ISSET(STDIN_FILENO, &read_fds)) {
-                    if (fgets(terminal_input_line, BUFFER_SIZE, stdin) != NULL) {
-                        terminal_input_line[strcspn(terminal_input_line, "\n")] = 0; // ê°œí–‰ ë¬¸ì ì œê±°
+			FD_ZERO(&read_fds);
+			FD_SET(STDIN_FILENO, &read_fds); // Ç¥ÁØ ÀÔ·Â °¨Áö
 
-                        if (strlen(terminal_input_line) == 0) {
-                            printf("> ");
-                            fflush(stdout);
-                            continue;
-                        }
-                        
-                        if (strncmp(terminal_input_line, "/nick ", 6) == 0) {
-                            send_formatted_message_to_server("NICK", terminal_input_line + 6);
-                        } else if (strncmp(terminal_input_line, "/create ", 8) == 0) {
-                            send_formatted_message_to_server("CREATE_ROOM", terminal_input_line + 8);
-                        } else if (strncmp(terminal_input_line, "/join ", 6) == 0) {
-                            send_formatted_message_to_server("JOIN_ROOM", terminal_input_line + 6);
-                        } else if (strcmp(terminal_input_line, "/exit") == 0) {
-                            send_formatted_message_to_server("EXIT_ROOM", NULL);
-                        } else if (strcmp(terminal_input_line, "/list") == 0) {
-                            send_formatted_message_to_server("LIST_ROOMS", NULL);
-                        } else if (strcmp(terminal_input_line, "/quit") == 0) {
-                            main_program_should_run = 0; // í”„ë¡œê·¸ë¨ ì¢…ë£Œ í”Œë˜ê·¸
-                            break;
-                        }
-                        else if (strncmp(terminal_input_line, "/msg ", 5) == 0) {
-                             send_formatted_message_to_server("MSG", terminal_input_line + 5);
-                        }
-                        else if (app_current_state == STATE_IN_ROOM && client_is_nick_set) {
-                            printf("\r[í´ë¼ì´ì–¸íŠ¸] í˜„ì¬ ê·¸ë¦¼íŒ UI í™œì„± ìƒíƒœì…ë‹ˆë‹¤. ì±„íŒ…ì€ UIì—ì„œ ì§ì ‘ ì…ë ¥í•´ì£¼ì„¸ìš”.\n> ");
-                        }
-                        else {
-                            printf("\r[í´ë¼ì´ì–¸íŠ¸] ì•Œ ìˆ˜ ì—†ëŠ” ëª…ë ¹ì´ê±°ë‚˜, í˜„ì¬ ìƒíƒœì—ì„œ ì‚¬ìš©í•  ìˆ˜ ì—†ëŠ” ëª…ë ¹ì…ë‹ˆë‹¤.\n> ");
-                        }
-                        printf("> "); // ìƒˆë¡œìš´ í”„ë¡¬í”„íŠ¸ ì¶œë ¥
-                        fflush(stdout);
-                    } else {
-                        // EOF (Ctrl+D) ë˜ëŠ” ì½ê¸° ì˜¤ë¥˜ ì‹œ ì¢…ë£Œ
-                        main_program_should_run = 0;
-                    }
-                }
-            }
-            // SDL UIê°€ ë¹„í™œì„±í™”ëœ ë™ì•ˆì—ëŠ” CPUë¥¼ ì¡°ê¸ˆ ë” ì–‘ë³´
-            SDL_Delay(10); 
-        }
-        // SDL UI í™œì„±í™” ìƒíƒœê°€ ë°”ë€Œì—ˆëŠ”ë° ì•„ì§ SDLì´ ë™ì‘ ì¤‘ì´ë¼ë©´ ì •ë¦¬
-        if (!sdl_should_be_active && sdl_render_loop_running) {
-            printf("[í´ë¼ì´ì–¸íŠ¸:ë©”ì¸] SDL UI ë¹„í™œì„±í™” ìš”ì²­ ê°ì§€. ì¢…ë£Œ í•¨ìˆ˜ í˜¸ì¶œ.\n");
-            shutdown_sdl_environment(); // SDL ìì› í•´ì œ
-        }
-    } // end of while (main_program_should_run)
+			// ÂªÀº ½Ã°£¸¸ ´ë±âÇÏ¿© CPU Á¡À¯À²À» ³Ê¹« ³ôÀÌÁö ¾ÊÀ½
+			tv.tv_sec = 0;
+			tv.tv_usec = 10000; // 10ms
 
-    // 5. í”„ë¡œê·¸ë¨ ì¢…ë£Œ ì •ë¦¬
-    printf("[í´ë¼ì´ì–¸íŠ¸:ë©”ì¸] í”„ë¡œê·¸ë¨ ì¢…ë£Œ ì¤‘...\n");
-    // ìˆ˜ì‹  ìŠ¤ë ˆë“œê°€ ì¢…ë£Œë  ë•Œê¹Œì§€ ëŒ€ê¸°
-    pthread_join(server_message_receiver_tid, NULL);
-    
-    // ë‚¨ì€ SDL ìì› í™•ì‹¤íˆ í•´ì œ (ì´ì¤‘ í˜¸ì¶œ ë°©ì§€ ë¡œì§ ìˆìŒ)
-    shutdown_sdl_environment();
+			int select_result = select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &tv);
 
-    // ë“œë¡œì‰ ëª…ë ¹ ë²„í¼ ë©”ëª¨ë¦¬ í•´ì œ
-    if (received_draw_commands) {
-        free(received_draw_commands);
-        received_draw_commands = NULL;
-    }
-    pthread_mutex_destroy(&received_draw_commands_lock);
+			if (select_result < 0) {
+				if (errno == EINTR) continue; // ÀÎÅÍ·´Æ® µÈ °æ¿ì Àç½Ãµµ
+				perror("select error");
+				main_program_should_run = 0;
+				break;
+			}
+			else if (select_result > 0) {
+				if (FD_ISSET(STDIN_FILENO, &read_fds)) {
+					if (fgets(terminal_input_line, BUFFER_SIZE, stdin) != NULL) {
+						terminal_input_line[strcspn(terminal_input_line, "\n")] = 0; // °³Çà ¹®ÀÚ Á¦°Å
 
-    // ì†Œì¼“ ë‹«ê¸°
-    close(client_socket_fd);
-    printf("[í´ë¼ì´ì–¸íŠ¸:ë©”ì¸] ëª¨ë“  ìì› í•´ì œ ì™„ë£Œ. ì¢…ë£Œ.\n");
+						if (strlen(terminal_input_line) == 0) {
+							printf("> ");
+							fflush(stdout);
+							continue;
+						}
 
-    return 0;
+						if (strncmp(terminal_input_line, "/nick ", 6) == 0) {
+							send_formatted_message_to_server("NICK", terminal_input_line + 6);
+						}
+						else if (strncmp(terminal_input_line, "/create ", 8) == 0) {
+							send_formatted_message_to_server("CREATE_ROOM", terminal_input_line + 8);
+						}
+						else if (strncmp(terminal_input_line, "/join ", 6) == 0) {
+							send_formatted_message_to_server("JOIN_ROOM", terminal_input_line + 6);
+						}
+						else if (strcmp(terminal_input_line, "/exit") == 0) {
+							send_formatted_message_to_server("EXIT_ROOM", NULL);
+						}
+						else if (strcmp(terminal_input_line, "/list") == 0) {
+							send_formatted_message_to_server("LIST_ROOMS", NULL);
+						}
+						else if (strcmp(terminal_input_line, "/quit") == 0) {
+							main_program_should_run = 0; // ÇÁ·Î±×·¥ Á¾·á ÇÃ·¡±×
+							break;
+						}
+						else if (strncmp(terminal_input_line, "/msg ", 5) == 0) {
+							send_formatted_message_to_server("MSG", terminal_input_line + 5);
+						}
+						else if (app_current_state == STATE_IN_ROOM && client_is_nick_set) {
+							printf("\r[Å¬¶óÀÌ¾ğÆ®] ÇöÀç ±×¸²ÆÇ UI È°¼º »óÅÂÀÔ´Ï´Ù. Ã¤ÆÃÀº UI¿¡¼­ Á÷Á¢ ÀÔ·ÂÇØÁÖ¼¼¿ä.\n> ");
+						}
+						else {
+							printf("\r[Å¬¶óÀÌ¾ğÆ®] ¾Ë ¼ö ¾ø´Â ¸í·ÉÀÌ°Å³ª, ÇöÀç »óÅÂ¿¡¼­ »ç¿ëÇÒ ¼ö ¾ø´Â ¸í·ÉÀÔ´Ï´Ù.\n> ");
+						}
+						printf("> "); // »õ·Î¿î ÇÁ·ÒÇÁÆ® Ãâ·Â
+						fflush(stdout);
+					}
+					else {
+						// EOF (Ctrl+D) ¶Ç´Â ÀĞ±â ¿À·ù ½Ã Á¾·á
+						main_program_should_run = 0;
+					}
+				}
+			}
+			// SDL UI°¡ ºñÈ°¼ºÈ­µÈ µ¿¾È¿¡´Â CPU¸¦ Á¶±İ ´õ ¾çº¸
+			SDL_Delay(10);
+		}
+		// SDL UI È°¼ºÈ­ »óÅÂ°¡ ¹Ù²î¾ú´Âµ¥ ¾ÆÁ÷ SDLÀÌ µ¿ÀÛ ÁßÀÌ¶ó¸é Á¤¸®
+		if (!sdl_should_be_active && sdl_render_loop_running) {
+			printf("[Å¬¶óÀÌ¾ğÆ®:¸ŞÀÎ] SDL UI ºñÈ°¼ºÈ­ ¿äÃ» °¨Áö. Á¾·á ÇÔ¼ö È£Ãâ.\n");
+			shutdown_sdl_environment(); // SDL ÀÚ¿ø ÇØÁ¦
+		}
+	} // end of while (main_program_should_run)
+
+	// 5. ÇÁ·Î±×·¥ Á¾·á Á¤¸®
+	printf("[Å¬¶óÀÌ¾ğÆ®:¸ŞÀÎ] ÇÁ·Î±×·¥ Á¾·á Áß...\n");
+	// ¼ö½Å ½º·¹µå°¡ Á¾·áµÉ ¶§±îÁö ´ë±â
+	pthread_join(server_message_receiver_tid, NULL);
+
+	// ³²Àº SDL ÀÚ¿ø È®½ÇÈ÷ ÇØÁ¦ (ÀÌÁß È£Ãâ ¹æÁö ·ÎÁ÷ ÀÖÀ½)
+	shutdown_sdl_environment();
+
+	// µå·ÎÀ× ¸í·É ¹öÆÛ ¸Ş¸ğ¸® ÇØÁ¦
+	if (received_draw_commands) {
+		free(received_draw_commands);
+		received_draw_commands = NULL;
+	}
+	pthread_mutex_destroy(&received_draw_commands_lock);
+
+	// ¼ÒÄÏ ´İ±â
+	close(client_socket_fd);
+	printf("[Å¬¶óÀÌ¾ğÆ®:¸ŞÀÎ] ¸ğµç ÀÚ¿ø ÇØÁ¦ ¿Ï·á. Á¾·á.\n");
+
+	return 0;
 }
