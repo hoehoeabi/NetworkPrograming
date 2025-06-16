@@ -68,41 +68,40 @@ sudo apt-get install build-essential libsdl2-dev libsdl2-ttf-dev
 ## 5. 💬 사용자 명령어 요약
 
 | 명령어    | 인자       | 설명                                       |
-|-----------|------------|--------------------------------------------|
+|-----------|------------|----------------------------------------|
 | `/nick`   | `<닉네임>` | 닉네임 설정                                |
-| `/create` | `<방이름>` | 방 생성 후 입장                            |
+| `/create` | `<방이름>` | 방 생성 후 입장                             |
 | `/join`   | `<방ID>`   | 지정된 방에 입장                           |
-| `/roomlist` | 없음     | 현재 생성된 방 목록 조회                   |
-| `/exit`   | 없음       | 현재 참여 중인 방에서 나가기               |
-| `/answer` | `<단어>`   | (출제자 전용) 현재 라운드의 정답 단어 설정 |
-| `/guess`  | `<단어>`   | (참가자 전용) 정답 추측                    |
+| `/roomlist` | 없음     | 현재 생성된 방 목록 조회                     |
+| `/exit`   | 없음       | 현재 참여 중인 방에서 나가기                  |
+| `/answer` | `<단어>`   | (출제자 전용) 현재 라운드의 정답 단어 설정       |
+| `/guess`  | `<단어>`   | (참가자 전용) 정답 추측                     |
 | `/quit`   | 없음       | 클라이언트 종료                            |
-| *(없음)*  | `<메시지>` | 현재 방 참여자에게 채팅 메시지 전송        |
+| *(없음)*  | `<메시지>` | 현재 방 참여자에게 채팅 메시지 전송              |
+------------------------------------------------------------------
 
----
 
 ## 6. 🛰️ 통신 프로토콜 명세
 
 ### 📤 클라이언트 → 서버
 
-#NICK:<nickname>
-#CREATE_ROOM:<room_name>
-#JOIN_ROOM:<room_id>
-#LIST_ROOMS
-#EXIT_ROOM
-#SET_ANSWER:<word>
-#GUESS:<word>
-#DRAW_POINT:<x>,<y>,<color_idx>,<size>
-#DRAW_LINE:<x1>,<y1>,<x2>,<y2>,<color_idx>,<size>
-#DRAW_CLEAR
-#MSG:<chat_message>
-#QUIT
+NICK:<nickname>
+CREATE_ROOM:<room_name>
+JOIN_ROOM:<room_id>
+LIST_ROOMS
+EXIT_ROOM
+SET_ANSWER:<word>
+GUESS:<word>
+DRAW_POINT:<x>,<y>,<color_idx>,<size>
+DRAW_LINE:<x1>,<y1>,<x2>,<y2>,<color_idx>,<size>
+DRAW_CLEAR
+MSG:<chat_message>
+QUIT
 
 ### 📥 서버 → 클라이언트
 
-#SMSG:<server_message> // 시스템 메시지
-#ROOM_EVENT:<event_message> // 방 내 이벤트 (입장, 퇴장 등)
-#MSG:[nickname] <chat_message> // 일반 채팅 메시지
-#TURN_CHANGED:<drawer_nickname> // 출제자 변경 알림
-#DRAW_POINT:... / DRAW_LINE:... // 그림판 그리기 데이터
-
+SMSG:<server_message> // 시스템 메시지
+ROOM_EVENT:<event_message> // 방 내 이벤트 (입장, 퇴장 등)
+MSG:[nickname] <chat_message> // 일반 채팅 메시지
+TURN_CHANGED:<drawer_nickname> // 출제자 변경 알림
+DRAW_POINT:... / DRAW_LINE:... // 그림판 그리기 데이터
