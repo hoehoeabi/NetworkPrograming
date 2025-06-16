@@ -38,3 +38,71 @@
 ```bash
 sudo apt-get update
 sudo apt-get install build-essential libsdl2-dev libsdl2-ttf-dev
+
+## 4. 🎮 주요 기능 설명
+
+### 4.1. ✅ 다중 클라이언트 & 안정성
+- 최대 `FD_SETSIZE` (기본 1024명)까지 이론적으로 동시 접속 지원
+- 클라이언트의 비정상 종료를 감지하고, 소켓 및 상태 정리를 자동 수행
+- TCP의 스트림 특성을 보완하기 위해 개행 문자(`\n`) 기준으로 메시지를 분리하는 **메시지 프레이밍(Message Framing)** 로직 구현
+
+### 4.2. 🏠 방 기반 게임 관리
+- 명령어 `/create`, `/join`, `/roomlist`, `/exit` 등을 통해 방 생성 및 입장
+- 서버는 각 방의 고유 상태(유저 목록, 정답, 출제자 등)를 유지 관리
+
+### 4.3. 🎯 출제자 검증 및 턴 제어
+- `drawer_sock` 값으로 출제자 여부를 판단
+- `DRAW_`, `SET_ANSWER` 명령은 출제자인지 확인 후에만 처리
+- 출제자 외 사용자의 무단 입력 방지
+
+### 4.4. ⏰ 제한 시간 기반 라운드
+- 각 라운드는 기본 60초로 제한
+- 시간이 만료되면 정답 공개 후, 다음 출제자로 턴 자동 전환
+
+### 4.5. 📚 문제은행 및 정답 처리
+- `word_list`를 통해 중복 없는 단어 출제
+- 정답자가 등장하면 해당 클라이언트를 다음 출제자로 자동 지정
+
+---
+
+## 5. 💬 사용자 명령어 요약
+
+| 명령어    | 인자       | 설명                                       |
+|-----------|------------|--------------------------------------------|
+| `/nick`   | `<닉네임>` | 닉네임 설정                                |
+| `/create` | `<방이름>` | 방 생성 후 입장                            |
+| `/join`   | `<방ID>`   | 지정된 방에 입장                           |
+| `/roomlist` | 없음     | 현재 생성된 방 목록 조회                   |
+| `/exit`   | 없음       | 현재 참여 중인 방에서 나가기               |
+| `/answer` | `<단어>`   | (출제자 전용) 현재 라운드의 정답 단어 설정 |
+| `/guess`  | `<단어>`   | (참가자 전용) 정답 추측                    |
+| `/quit`   | 없음       | 클라이언트 종료                            |
+| *(없음)*  | `<메시지>` | 현재 방 참여자에게 채팅 메시지 전송        |
+
+---
+
+## 6. 🛰️ 통신 프로토콜 명세
+
+### 📤 클라이언트 → 서버
+
+#NICK:<nickname>
+#CREATE_ROOM:<room_name>
+#JOIN_ROOM:<room_id>
+#LIST_ROOMS
+#EXIT_ROOM
+#SET_ANSWER:<word>
+#GUESS:<word>
+#DRAW_POINT:<x>,<y>,<color_idx>,<size>
+#DRAW_LINE:<x1>,<y1>,<x2>,<y2>,<color_idx>,<size>
+#DRAW_CLEAR
+#MSG:<chat_message>
+#QUIT
+
+### 📥 서버 → 클라이언트
+
+#SMSG:<server_message> // 시스템 메시지
+#ROOM_EVENT:<event_message> // 방 내 이벤트 (입장, 퇴장 등)
+#MSG:[nickname] <chat_message> // 일반 채팅 메시지
+#TURN_CHANGED:<drawer_nickname> // 출제자 변경 알림
+#DRAW_POINT:... / DRAW_LINE:... // 그림판 그리기 데이터
+
